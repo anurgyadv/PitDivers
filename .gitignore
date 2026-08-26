@@ -1,0 +1,13 @@
+.venv/
+.arduino-build/
+__pycache__/
+*.py[cod]
+.env
+secrets.h
+runs/
+data/
+models/
+*.log
+
+# Generated scratch files created by the vendored DA3 CLI/gallery.
+third_party/depth-anything-3/workspace/

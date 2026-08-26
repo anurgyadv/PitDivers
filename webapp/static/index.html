@@ -1,0 +1,246 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>PitDivers • Rover Vision Console</title>
+    <link rel="stylesheet" href="/assets/styles.css" />
+    <script type="module" src="/assets/vendor/model-viewer.min.js"></script>
+  </head>
+  <body>
+    <div class="app-shell">
+      <aside class="sidebar">
+        <div class="brand">
+          <div class="brand-mark" aria-hidden="true"><span></span><span></span><span></span></div>
+          <div><strong>PITDIVERS</strong><small>Rover vision console</small></div>
+        </div>
+
+        <nav class="nav" aria-label="Main navigation">
+          <button class="nav-item active" data-tab="live">
+            <span class="nav-icon">◉</span><span>Live</span><i id="liveNavDot"></i>
+          </button>
+          <button class="nav-item" data-tab="captures">
+            <span class="nav-icon">▦</span><span>Captures</span><b id="captureBadge">0</b>
+          </button>
+          <button class="nav-item" data-tab="reconstructions">
+            <span class="nav-icon">◇</span><span>3D Models</span><b id="runBadge">0</b>
+          </button>
+          <button class="nav-item" data-tab="models">
+            <span class="nav-icon">⬡</span><span>DA3 Models</span>
+          </button>
+        </nav>
+
+        <div class="system-card">
+          <div class="system-title"><span id="systemDot" class="status-dot"></span>Base station</div>
+          <strong id="gpuName">Checking GPU…</strong>
+          <small id="systemStatus">Connecting to local service</small>
+        </div>
+      </aside>
+
+      <main>
+        <header class="topbar">
+          <div>
+            <p class="eyebrow" id="pageEyebrow">OPERATIONS</p>
+            <h1 id="pageTitle">Live inspection</h1>
+          </div>
+          <div class="top-actions">
+            <span class="clock" id="clock"></span>
+            <button class="icon-button" id="refreshButton" title="Refresh all data" aria-label="Refresh all data">↻</button>
+          </div>
+        </header>
+
+        <section class="page active" id="page-live">
+          <div class="connection-panel panel">
+            <div class="field wide">
+              <label for="streamUrl">ESP32 stream URL</label>
+              <input id="streamUrl" value="http://192.168.0.69:81/stream" spellcheck="false" />
+            </div>
+            <div class="field">
+              <label for="liveModel">Live model</label>
+              <select id="liveModel"></select>
+            </div>
+            <div class="field compact">
+              <label for="processRes">Process resolution</label>
+              <select id="processRes">
+                <option value="392">392 · Faster</option>
+                <option value="504" selected>504 · Balanced</option>
+                <option value="672">672 · Detailed</option>
+              </select>
+            </div>
+            <div class="field compact">
+              <label for="inferenceFps">Depth FPS</label>
+              <input id="inferenceFps" type="number" value="5" min="1" max="30" step="1" />
+            </div>
+            <button class="button primary" id="connectButton">Connect stream</button>
+          </div>
+
+          <div class="live-toolbar">
+            <div class="live-state">
+              <span class="status-dot" id="liveStatusDot"></span>
+              <div><strong id="liveStatusText">Disconnected</strong><small id="liveStatusDetail">Enter the ESP32 URL to begin</small></div>
+            </div>
+            <div class="record-controls">
+              <div class="field name-field">
+                <label for="captureName">Capture name</label>
+                <input id="captureName" placeholder="live_capture_03" />
+              </div>
+              <div class="field fps-field">
+                <label for="keyframeFps">Save FPS</label>
+                <input id="keyframeFps" type="number" value="2" min="0.2" max="15" step="0.2" />
+              </div>
+              <button class="button record" id="recordButton" disabled><span></span>Start recording</button>
+            </div>
+          </div>
+
+          <div class="stream-grid">
+            <article class="stream-card panel">
+              <div class="card-heading">
+                <div><p class="eyebrow">CAMERA 01</p><h2>Live stream</h2></div>
+                <span class="pill" id="cameraResolution">No signal</span>
+              </div>
+              <div class="stream-frame" id="rawFrameWrap">
+                <img id="rawStream" alt="ESP32 live camera stream" />
+                <div class="empty-stream"><span>◉</span><strong>Camera offline</strong><small>Connect the ESP32 stream to begin</small></div>
+              </div>
+            </article>
+
+            <article class="stream-card panel">
+              <div class="card-heading">
+                <div><p class="eyebrow">DA3 DEPTH</p><h2>Live depth output</h2></div>
+                <span class="pill accent" id="depthModelPill">DA3 Base</span>
+              </div>
+              <div class="stream-frame" id="depthFrameWrap">
+                <img id="depthStream" alt="Depth Anything 3 live depth output" />
+                <div class="empty-stream"><span>◇</span><strong>Depth idle</strong><small>The model loads after the stream connects</small></div>
+              </div>
+            </article>
+          </div>
+
+          <div class="metrics-grid">
+            <div class="metric panel"><span>CAMERA FPS</span><strong id="cameraFps">—</strong><small>Incoming MJPEG</small></div>
+            <div class="metric panel"><span>DA3 FPS</span><strong id="depthFps">—</strong><small>Processed frames</small></div>
+            <div class="metric panel"><span>INFERENCE</span><strong id="inferenceTime">—</strong><small>Per depth frame</small></div>
+            <div class="metric panel"><span>KEYFRAMES</span><strong id="framesSaved">0</strong><small id="recordingSession">Not recording</small></div>
+            <div class="metric panel"><span>TEMPERATURE</span><strong id="temperatureValue">—</strong><small id="sensorPinLabel">DHT11 · sensor GPIO</small></div>
+            <div class="metric panel"><span>HUMIDITY</span><strong id="humidityValue">—</strong><small id="sensorStatus">Sensor offline</small></div>
+          </div>
+
+          <div class="sensor-chart-grid">
+            <article class="sensor-chart panel">
+              <div class="chart-heading">
+                <div><p class="eyebrow">ENVIRONMENT</p><h2>Temperature history</h2></div>
+                <small id="temperatureRange">Waiting for data</small>
+              </div>
+              <div class="chart-canvas-wrap">
+                <canvas id="temperatureChart" role="img" aria-label="Live DHT11 temperature graph"></canvas>
+              </div>
+              <div class="chart-foot"><span>Rolling 10-minute window</span><span>°C</span></div>
+            </article>
+
+            <article class="sensor-chart panel">
+              <div class="chart-heading">
+                <div><p class="eyebrow cyan">ENVIRONMENT</p><h2>Humidity history</h2></div>
+                <small id="humidityRange">Waiting for data</small>
+              </div>
+              <div class="chart-canvas-wrap">
+                <canvas id="humidityChart" role="img" aria-label="Live DHT11 humidity graph"></canvas>
+              </div>
+              <div class="chart-foot"><span>Rolling 10-minute window</span><span>% RH</span></div>
+            </article>
+          </div>
+        </section>
+
+        <section class="page" id="page-captures">
+          <div class="section-intro">
+            <div><p>Saved keyframes from rover recordings. Open a capture to inspect its photos or send it to DA3.</p></div>
+            <button class="button secondary" data-go-live>＋ New capture</button>
+          </div>
+          <div class="card-grid" id="captureGrid"></div>
+        </section>
+
+        <section class="page" id="page-reconstructions">
+          <div class="section-intro">
+            <div><p>Completed GLB point clouds and active reconstruction jobs.</p></div>
+            <button class="button secondary" data-go-captures>Choose capture</button>
+          </div>
+          <div id="activeJobs"></div>
+          <div class="card-grid model-grid" id="runGrid"></div>
+        </section>
+
+        <section class="page" id="page-models">
+          <div class="section-intro">
+            <div>
+              <p>Download checkpoints once, then run them from the local Hugging Face cache.</p>
+              <small>Base and Small are Apache-2.0. The larger research checkpoints have non-commercial licences.</small>
+            </div>
+          </div>
+          <div class="model-catalog" id="modelCatalog"></div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="photoDialog" class="modal photo-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow">CAPTURE REVIEW</p><h2 id="photoDialogTitle">Photos</h2></div>
+        <button class="icon-button modal-close" aria-label="Close">×</button>
+      </div>
+      <div class="photo-summary" id="photoSummary"></div>
+      <div class="photo-grid" id="photoGrid"></div>
+    </dialog>
+
+    <dialog id="viewerDialog" class="modal viewer-modal">
+      <div class="modal-header floating">
+        <div><p class="eyebrow">3D RECONSTRUCTION</p><h2 id="viewerTitle">Scene</h2></div>
+        <div class="viewer-actions">
+          <a class="button glass" id="downloadGlb" href="#">Download GLB</a>
+          <button class="button glass" id="fullscreenViewer">Full screen</button>
+          <button class="icon-button modal-close" aria-label="Close">×</button>
+        </div>
+      </div>
+      <model-viewer
+        id="sceneViewer"
+        camera-controls
+        auto-rotate
+        interaction-prompt="auto"
+        shadow-intensity="0"
+        exposure="1.1"
+        alt="Interactive DA3 reconstruction"
+      ></model-viewer>
+    </dialog>
+
+    <dialog id="reconstructDialog" class="modal form-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow">DA3 PIPELINE</p><h2>Build 3D reconstruction</h2></div>
+        <button class="icon-button modal-close" aria-label="Close">×</button>
+      </div>
+      <form id="reconstructForm">
+        <input id="reconstructCapture" type="hidden" />
+        <div class="capture-target" id="reconstructTarget"></div>
+        <div class="field">
+          <label for="reconstructModel">DA3 model</label>
+          <select id="reconstructModel"></select>
+        </div>
+        <div class="field">
+          <label for="reconstructRes">Processing resolution</label>
+          <select id="reconstructRes">
+            <option value="392">392 · Lower memory</option>
+            <option value="504" selected>504 · Recommended</option>
+            <option value="672">672 · Higher detail / memory</option>
+          </select>
+        </div>
+        <div class="warning-box">Live mode must be disconnected while reconstruction runs. This prevents two DA3 processes competing for GPU memory.</div>
+        <button class="button primary full" type="submit">Start reconstruction</button>
+      </form>
+    </dialog>
+
+    <div class="lightbox" id="lightbox" hidden>
+      <button class="icon-button" id="lightboxClose" aria-label="Close image">×</button>
+      <img id="lightboxImage" alt="Full-size captured frame" />
+      <span id="lightboxLabel"></span>
+    </div>
+
+    <div class="toast-stack" id="toastStack"></div>
+    <script src="/assets/app.js"></script>
+  </body>
+</html>
