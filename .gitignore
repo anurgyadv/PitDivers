@@ -9,5 +9,11 @@ data/
 models/
 *.log
 
+# Frontend build tooling. The built dashboard in webapp/frontend/dist IS
+# committed so the Python-only launcher can serve it without Node installed.
+webapp/frontend/node_modules/
+webapp/frontend/.vite/
+*.tsbuildinfo
+
 # Generated scratch files created by the vendored DA3 CLI/gallery.
 third_party/depth-anything-3/workspace/

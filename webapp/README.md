@@ -27,6 +27,26 @@ Alternatively, from an activated project environment:
 python -m webapp
 ```
 
+## Dashboard frontend
+
+The browser UI is a React + TypeScript app (Vite, Tailwind CSS, Framer Motion,
+Lucide icons) in `webapp/frontend`. FastAPI serves its production build from
+`webapp/frontend/dist`, which is committed so the Python launcher works without
+Node installed.
+
+Only rebuild the UI if you change the frontend source. It needs Node 20+:
+
+```powershell
+cd webapp/frontend
+npm install
+npm run build      # writes webapp/frontend/dist, then FastAPI serves it
+```
+
+For live UI development with hot reload, run the dashboard (`python -m webapp`)
+and, in a second terminal, `npm run dev` in `webapp/frontend`. The dev server on
+`http://127.0.0.1:5173` proxies `/api` and the MJPEG streams to the dashboard on
+port 8765.
+
 ## Normal workflow
 
 1. Open **Live**, enter the raw ESP32 URL such as

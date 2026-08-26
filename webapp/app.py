@@ -27,7 +27,9 @@ from .core import (
 )
 
 
-STATIC_DIR = Path(__file__).resolve().parent / "static"
+FRONTEND_DIST = Path(__file__).resolve().parent / "frontend" / "dist"
+ASSETS_DIR = FRONTEND_DIST / "assets"
+INDEX_FILE = FRONTEND_DIST / "index.html"
 
 
 class ConnectRequest(BaseModel):
@@ -283,9 +285,15 @@ def download_model(request: ModelRequest) -> dict:
     return {"ok": True}
 
 
-app.mount("/assets", StaticFiles(directory=STATIC_DIR), name="assets")
+if ASSETS_DIR.is_dir():
+    app.mount("/assets", StaticFiles(directory=ASSETS_DIR), name="assets")
 
 
 @app.get("/{full_path:path}")
 def frontend(full_path: str) -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+    if INDEX_FILE.is_file():
+        return FileResponse(INDEX_FILE)
+    raise HTTPException(
+        503,
+        "Frontend build missing. Run `npm install && npm run build` in webapp/frontend.",
+    )
