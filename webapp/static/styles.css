@@ -312,51 +312,52 @@ select { cursor: pointer; }
 .safety-gauge-compact strong { display: none; }
 
 /* Expanded distance dashboard */
-.distance-modal { width: min(1220px, calc(100vw - 32px)); max-height: calc(100vh - 28px); background: #080d12; border-color: #2d3943; }
-.distance-modal-header { min-height: 78px; background: radial-gradient(circle at 10% 0, rgba(255,198,90,.07), transparent 38%); }
+.distance-modal { width: min(1360px, calc(100vw - 24px)); max-height: calc(100vh - 20px); background: #080d12; border-color: #2d3943; }
+.distance-modal-header { min-height: 62px; background: radial-gradient(circle at 10% 0, rgba(255,198,90,.07), transparent 38%); }
 .distance-title { display: flex; align-items: center; gap: 13px; }
-.distance-title .env-badge { --env: var(--yellow); width: 46px; height: 46px; }
-.distance-title h2 { margin: 2px 0 0; font-size: 18px; text-transform: uppercase; letter-spacing: .08em; }
+.distance-title .env-badge { --env: var(--yellow); width: 40px; height: 40px; }
+.distance-title h2 { margin: 2px 0 0; font-size: 16px; text-transform: uppercase; letter-spacing: .08em; }
 .distance-title small { color: var(--muted); font-size: 10px; }
 .distance-dialog-actions { display: flex; align-items: center; gap: 16px; }
-.distance-dashboard { max-height: calc(100vh - 108px); padding: 18px; overflow: auto; background-image: linear-gradient(rgba(255,255,255,.014) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.012) 1px, transparent 1px); background-size: 42px 42px; }
-.distance-overview { display: grid; grid-template-columns: minmax(270px, .72fr) minmax(480px, 1.28fr); gap: 22px; padding: 20px 22px; border: 1px solid var(--line); border-radius: 14px; background: radial-gradient(circle at 70% 10%, rgba(255,198,90,.06), transparent 42%), rgba(10,16,22,.93); }
+.distance-dashboard { max-height: calc(100vh - 82px); padding: 12px; overflow: auto; background-image: linear-gradient(rgba(255,255,255,.014) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.012) 1px, transparent 1px); background-size: 42px 42px; }
+.distance-overview { display: grid; grid-template-columns: minmax(250px, .62fr) minmax(420px, 1.38fr); gap: 16px; padding: 13px 17px; border: 1px solid var(--line); border-radius: 12px; background: radial-gradient(circle at 70% 10%, rgba(255,198,90,.06), transparent 42%), rgba(10,16,22,.93); }
 .distance-primary-reading { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
-.distance-primary-reading > strong { font-size: clamp(64px, 8vw, 112px); font-weight: 800; line-height: .95; letter-spacing: -.045em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.distance-primary-reading > strong { font-size: clamp(52px, 6vw, 80px); font-weight: 800; line-height: .95; letter-spacing: -.04em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .distance-primary-reading > strong span { margin-left: 8px; color: var(--muted); font-size: .34em; letter-spacing: 0; }
-.distance-alert { max-width: 100%; margin-top: 20px; display: inline-flex; align-items: center; gap: 10px; padding: 9px 16px; border-radius: 9px; color: var(--muted); background: rgba(137,150,163,.1); font-weight: 750; letter-spacing: .025em; }
+.distance-alert { max-width: 100%; margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; padding: 7px 11px; border-radius: 7px; color: var(--muted); background: rgba(137,150,163,.1); font-size: 12px; font-weight: 750; letter-spacing: .025em; }
 .distance-alert i { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: inherit; background: color-mix(in srgb, currentColor 22%, transparent); font-style: normal; font-size: 13px; }
 .distance-alert em { overflow: hidden; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
-.distance-primary-reading p { max-width: 340px; margin: 18px 0 0; color: var(--muted); font-size: 14px; line-height: 1.55; }
+.distance-primary-reading p { max-width: 330px; margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
 .distance-gauge-wrap { min-width: 0; display: grid; align-items: center; }
-.safety-gauge-detail { width: min(100%, 590px); margin: 0 auto; }
-.safety-gauge-detail svg { max-height: 260px; }
-.safety-gauge-detail > strong { position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%); font-size: 25px; letter-spacing: .08em; }
-.safety-gauge-detail > span { position: absolute; left: 50%; bottom: 6%; transform: translateX(-50%); color: var(--muted); font-size: 12px; white-space: nowrap; }
-.distance-zone-legend { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 4px; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: rgba(6,10,14,.58); }
-.distance-zone-legend > span { min-width: 0; padding: 10px 8px; display: grid; grid-template-columns: auto 1fr; column-gap: 7px; align-items: center; border-right: 1px solid var(--line-soft); }
+.safety-gauge-detail { width: min(100%, 460px); margin: 0 auto; }
+.safety-gauge-detail svg { max-height: 172px; }
+.safety-gauge-detail > strong { position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%); font-size: 18px; letter-spacing: .08em; }
+.safety-gauge-detail > span { position: absolute; left: 50%; bottom: 5%; transform: translateX(-50%); color: var(--muted); font-size: 9px; white-space: nowrap; }
+.distance-zone-legend { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: rgba(6,10,14,.58); }
+.distance-zone-legend > span { min-width: 0; padding: 6px 7px; display: grid; grid-template-columns: auto 1fr; column-gap: 6px; align-items: center; border-right: 1px solid var(--line-soft); }
 .distance-zone-legend > span:last-child { border-right: 0; }
-.distance-zone-legend i { grid-row: span 2; width: 9px; height: 9px; border-radius: 50%; }
+.distance-zone-legend i { grid-row: span 2; width: 8px; height: 8px; border-radius: 50%; }
 .distance-zone-legend i.stop { background: #f0444e; }.distance-zone-legend i.caution { background: #eeb326; }.distance-zone-legend i.clear { background: #51c449; }.distance-zone-legend i.safe { background: #22a95a; }
 .distance-zone-legend b { font-size: 10px; white-space: nowrap; }
 .distance-zone-legend small { color: var(--muted); font-size: 8px; letter-spacing: .09em; }
-.distance-analysis { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 16px; margin-top: 16px; }
-.distance-history-card, .distance-stats { border: 1px solid var(--line); border-radius: 14px; background: rgba(10,16,22,.94); overflow: hidden; }
-.distance-section-head { min-height: 66px; padding: 0 17px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line-soft); }
+.distance-analysis { display: grid; grid-template-columns: minmax(0, 1.15fr) minmax(360px, .85fr); gap: 12px; margin-top: 12px; }
+.distance-history-card, .distance-stats { border: 1px solid var(--line); border-radius: 12px; background: rgba(10,16,22,.94); overflow: hidden; }
+.distance-section-head { min-height: 48px; padding: 0 14px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line-soft); }
 .distance-section-head h3 { margin: 3px 0 0; font-size: 14px; }
 .distance-section-head > small { color: var(--yellow); font-size: 10px; }
-.distance-chart-wrap { height: 275px; padding: 10px 12px 4px; }
+.distance-chart-wrap { height: 176px; padding: 7px 9px 3px; }
 .distance-chart-wrap canvas { display: block; width: 100%; height: 100%; }
-.distance-stats { display: grid; grid-template-rows: repeat(4, 1fr); padding: 6px 16px; }
-.distance-stat { min-height: 75px; display: grid; grid-template-columns: 44px 1fr; align-items: center; gap: 12px; border-bottom: 1px solid var(--line-soft); }
-.distance-stat:last-child { border-bottom: 0; }
-.stat-symbol { width: 40px; height: 40px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 10px; background: color-mix(in srgb, currentColor 8%, transparent); font-size: 22px; }
+.distance-stats { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; padding: 0; }
+.distance-stat { min-height: 82px; padding: 8px 11px; display: grid; grid-template-columns: 36px 1fr; align-items: center; gap: 9px; border-bottom: 1px solid var(--line-soft); }
+.distance-stat:nth-child(odd) { border-right: 1px solid var(--line-soft); }
+.distance-stat:nth-child(n+3) { border-bottom: 0; }
+.stat-symbol { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent); font-size: 18px; }
 .stat-symbol.approach { color: #a878ff; }.stat-symbol.nearest { color: #45a7ff; }.stat-symbol.average { color: #8bd957; }.stat-symbol.quality { color: #3edaf3; }
 .distance-stat div { min-width: 0; display: grid; grid-template-columns: 1fr auto; column-gap: 8px; align-items: baseline; }
-.distance-stat small { color: var(--muted); font-size: 11px; }
-.distance-stat strong { grid-row: span 2; font-size: 20px; color: var(--yellow); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.distance-stat small { color: var(--muted); font-size: 9px; }
+.distance-stat strong { grid-row: span 2; font-size: 16px; color: var(--yellow); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .distance-stat em { color: var(--faint); font-size: 9px; font-style: normal; }
-.distance-specs { min-height: 72px; margin-top: 16px; padding: 10px 4px; display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 14px; background: rgba(10,16,22,.94); }
+.distance-specs { min-height: 48px; margin-top: 12px; padding: 5px 4px; display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 12px; background: rgba(10,16,22,.94); }
 .distance-specs span { display: grid; align-content: center; gap: 5px; padding: 0 22px; border-right: 1px solid var(--line-soft); }
 .distance-specs span:last-child { border-right: 0; }
 .distance-specs b { color: var(--faint); font-size: 8px; letter-spacing: .1em; text-transform: uppercase; }
