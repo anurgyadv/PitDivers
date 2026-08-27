@@ -736,77 +736,9 @@ function updateAttitudeOverlay({ roll, pitch, heading, motionStable, danger }) {
   status.querySelector("span").textContent = danger ? "Attitude warning" : motionStable ? "Stable" : "Moving";
 }
 
-function drawRover3d() {
-  const dialog = $("#roverDialog");
-  const canvas = $("#roverCanvas");
-  if (!dialog?.open || !canvas) return;
-  const rect = canvas.getBoundingClientRect();
-  if (!rect.width || !rect.height) return;
-  const dpr = Math.min(window.devicePixelRatio || 1, 2);
-  canvas.width = Math.round(rect.width * dpr);
-  canvas.height = Math.round(rect.height * dpr);
-  const ctx = canvas.getContext("2d");
-  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  ctx.clearRect(0, 0, rect.width, rect.height);
-
-  const sensor = state.currentImu;
-  $("#roverWaiting").hidden = Boolean(sensor);
-  if (!sensor) return;
-  const roll = sensor.tilt_deg.roll * Math.PI / 180;
-  const pitch = sensor.tilt_deg.pitch * Math.PI / 180;
-  const yawDegrees = relativeYaw(sensor.tilt_deg.yaw);
-  const yaw = yawDegrees * Math.PI / 180;
-  const rotate = (point) => {
-    let [x, y, z] = point;
-    [x, y] = [x * Math.cos(roll) - y * Math.sin(roll), x * Math.sin(roll) + y * Math.cos(roll)];
-    [y, z] = [y * Math.cos(pitch) - z * Math.sin(pitch), y * Math.sin(pitch) + z * Math.cos(pitch)];
-    [x, z] = [x * Math.cos(yaw) + z * Math.sin(yaw), -x * Math.sin(yaw) + z * Math.cos(yaw)];
-    return [x, y, z];
-  };
-  const scale = Math.min(rect.width, rect.height) * .19;
-  const project = (point) => {
-    const [x, y, z] = rotate(point);
-    const perspective = 4.8 / (5.8 + z);
-    return { x: rect.width / 2 + x * scale * perspective, y: rect.height / 2 - y * scale * perspective, z };
-  };
-  const boxes = [];
-  const addBox = (cx, cy, cz, sx, sy, sz, color) => {
-    const vertices = [
-      [-1,-1,-1], [1,-1,-1], [1,1,-1], [-1,1,-1],
-      [-1,-1,1], [1,-1,1], [1,1,1], [-1,1,1],
-    ].map(([x,y,z]) => [cx + x*sx/2, cy + y*sy/2, cz + z*sz/2]);
-    [[0,1,2,3],[4,7,6,5],[0,4,5,1],[3,2,6,7],[1,5,6,2],[0,3,7,4]].forEach((face, index) => boxes.push({ points: face.map((i) => project(vertices[i])), color, shade: index }));
-  };
-  addBox(0, 0, 0, 3.7, .72, 2.25, [255,116,51]);
-  addBox(0, .68, -.18, 1.9, .72, 1.45, [168,120,255]);
-  boxes.sort((a, b) => b.points.reduce((sum, p) => sum + p.z, 0) - a.points.reduce((sum, p) => sum + p.z, 0));
-  boxes.forEach((face) => {
-    const alpha = .48 + (face.shade % 3) * .1;
-    ctx.beginPath();
-    face.points.forEach((point, index) => index ? ctx.lineTo(point.x, point.y) : ctx.moveTo(point.x, point.y));
-    ctx.closePath();
-    ctx.fillStyle = `rgba(${face.color.join(",")},${alpha})`;
-    ctx.fill();
-    ctx.strokeStyle = "rgba(235,241,247,.38)";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  });
-  [[-1.55,-.53,-.95],[1.55,-.53,-.95],[-1.55,-.53,.95],[1.55,-.53,.95]].map(project).sort((a,b) => b.z-a.z).forEach((wheel) => {
-    const radius = Math.max(9, scale * .34 * (4.8 / (5.8 + wheel.z)));
-    ctx.beginPath(); ctx.ellipse(wheel.x, wheel.y, radius, radius * .58, 0, 0, Math.PI * 2);
-    ctx.fillStyle = "#11161c"; ctx.fill(); ctx.strokeStyle = "#778592"; ctx.lineWidth = 2; ctx.stroke();
-    ctx.beginPath(); ctx.arc(wheel.x, wheel.y, radius * .28, 0, Math.PI * 2); ctx.fillStyle = "#ff7433"; ctx.fill();
-  });
-  const heading = Math.round((yawDegrees + 360) % 360) % 360;
-  $("#roverRoll").textContent = `${sensor.tilt_deg.roll.toFixed(1)}°`;
-  $("#roverPitch").textContent = `${sensor.tilt_deg.pitch.toFixed(1)}°`;
-  $("#roverYaw").textContent = `${yawDegrees.toFixed(1)}° / ${String(heading).padStart(3, "0")}°`;
-}
-
-function openRoverViewer() {
-  const dialog = $("#roverDialog");
+function openMotionDetails() {
+  const dialog = $("#imuDialog");
   if (!dialog.open) dialog.showModal();
-  window.requestAnimationFrame(drawRover3d);
 }
 
 function setImuValues(sensor) {
@@ -821,6 +753,9 @@ function setImuValues(sensor) {
   setAxis("#imuRoll", roll, 1, "°");
   setAxis("#imuPitch", pitch, 1, "°");
   setAxis("#imuYaw", yaw, 1, "°");
+  setAxis("#imuSummaryRoll", roll, 1, "°");
+  setAxis("#imuSummaryPitch", pitch, 1, "°");
+  setAxis("#imuSummaryYaw", yaw, 1, "°");
   setAxis("#imuAccelX", sensor.accel_g.x, 3);
   setAxis("#imuAccelY", sensor.accel_g.y, 3);
   setAxis("#imuAccelZ", sensor.accel_g.z, 3);
@@ -828,10 +763,13 @@ function setImuValues(sensor) {
   setAxis("#imuGyroY", sensor.gyro_dps.y, 2);
   setAxis("#imuGyroZ", sensor.gyro_dps.z, 2);
   setAxis("#imuTemperature", sensor.mpu_temperature_c, 1, "°C");
+  setAxis("#imuSummaryTemperature", sensor.mpu_temperature_c, 1, "°C");
 
   const angularRate = Math.hypot(sensor.gyro_dps.x, sensor.gyro_dps.y, sensor.gyro_dps.z);
   const accelerationMagnitude = Math.hypot(sensor.accel_g.x, sensor.accel_g.y, sensor.accel_g.z);
   const shockLoad = Math.abs(accelerationMagnitude - 1);
+  setAxis("#imuSummaryAcceleration", accelerationMagnitude, 2, "g");
+  setAxis("#imuSummaryRate", angularRate, 1, "°/s");
   const tiltLimit = Number($("#tiltLimit")?.value || 30);
   const maximumTilt = Math.max(Math.abs(roll), Math.abs(pitch));
   const tiltRatio = maximumTilt / tiltLimit;
@@ -881,7 +819,6 @@ function setImuValues(sensor) {
   status.style.color = tiltRatio >= 1 || impactActive ? "#ff5364" : !motionStable ? "#ffc65a" : "#5ce09a";
   status.querySelector("em").textContent = tiltRatio >= 1 ? "ROLLOVER RISK" : impactActive ? "IMPACT" : motionStable ? "STABLE" : "MOVING";
   updateAttitudeOverlay({ roll, pitch, heading, motionStable, danger: tiltRatio >= 1 || impactActive });
-  drawRover3d();
 }
 
 function setImuOffline() {
@@ -914,10 +851,9 @@ function setImuOffline() {
   $("#imuImpactNote").textContent = "No motion sample";
   $("#cameraOverlayState").className = "camera-overlay-state";
   $("#cameraOverlayState span").textContent = "MPU waiting";
-  ["cameraOverlayRoll", "cameraOverlayPitch", "cameraOverlayHeading", "roverRoll", "roverPitch", "roverYaw"].forEach((id) => {
+  ["cameraOverlayRoll", "cameraOverlayPitch", "cameraOverlayHeading", "imuSummaryRoll", "imuSummaryPitch", "imuSummaryYaw", "imuSummaryAcceleration", "imuSummaryRate", "imuSummaryTemperature"].forEach((id) => {
     const element = $(`#${id}`); if (element) element.textContent = "—";
   });
-  drawRover3d();
 }
 
 const CHART_META = {
@@ -1395,8 +1331,7 @@ function bindEvents() {
     if (state.currentImu) setImuValues(state.currentImu);
   });
   $("#zeroYawButton").addEventListener("click", zeroYaw);
-  $("#roverZeroYaw").addEventListener("click", zeroYaw);
-  $("#openRoverViewer").addEventListener("click", openRoverViewer);
+  $("#openImuDialog").addEventListener("click", openMotionDetails);
   $("#cameraOverlayToggle").addEventListener("click", () => {
     state.attitudeOverlay = !state.attitudeOverlay;
     const button = $("#cameraOverlayToggle");
@@ -1493,14 +1428,14 @@ function updateClock() {
 }
 
 async function initialize() {
+  const imuPanel = $(".env-grid > .imu-card");
+  const imuDialogBody = $("#imuDialogBody");
+  if (imuPanel && imuDialogBody) imuDialogBody.append(imuPanel);
   bindEvents();
   $("#captureName").value = createCaptureName();
   updateClock();
   setInterval(updateClock, 1000);
-  window.addEventListener("resize", () => window.requestAnimationFrame(() => {
-    drawSensorCharts();
-    drawRover3d();
-  }));
+  window.addEventListener("resize", () => window.requestAnimationFrame(drawSensorCharts));
   drawSensorCharts();
   await refreshAll();
   setInterval(() => refreshLiveStatus(), 1000);

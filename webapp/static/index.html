@@ -167,10 +167,6 @@
               <div class="env-head imu-head">
                 <span class="env-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="9" ry="4"/><ellipse cx="12" cy="12" rx="4" ry="9" transform="rotate(35 12 12)"/><path d="m17.5 7.5 1-3M17.5 7.5l3-1"/></svg></span>
                 <div><p class="env-label">MOTION COMMAND</p><small class="distance-sensor-name">MPU6050 · live attitude and terrain dynamics</small></div>
-                <div class="imu-head-actions">
-                  <button class="motion-action" type="button" id="zeroYawButton" title="Use the current rover direction as 0 degrees">Zero yaw</button>
-                  <button class="motion-action accent" type="button" id="openRoverViewer">3D rover</button>
-                </div>
                 <label class="tilt-limit-control" for="tiltLimit">
                   <span>ROLLOVER LIMIT</span>
                   <input id="tiltLimit" type="range" min="15" max="45" step="1" value="30" />
@@ -287,6 +283,20 @@
 
           </div>
 
+          <section class="imu-summary panel" aria-labelledby="imuSummaryTitle">
+            <div class="imu-summary-head">
+              <div><p class="eyebrow">MPU6050</p><h2 id="imuSummaryTitle">Motion</h2></div>
+              <button class="motion-action accent" type="button" id="openImuDialog">Motion details</button>
+            </div>
+            <div class="imu-summary-grid">
+              <div><span>ROLL</span><strong id="imuSummaryRoll">—</strong></div>
+              <div><span>PITCH</span><strong id="imuSummaryPitch">—</strong></div>
+              <div><span>RELATIVE YAW</span><strong id="imuSummaryYaw">—</strong></div>
+              <div><span>RESULTANT</span><strong id="imuSummaryAcceleration">—</strong></div>
+              <div><span>ANGULAR RATE</span><strong id="imuSummaryRate">—</strong></div>
+              <div><span>IMU TEMP</span><strong id="imuSummaryTemperature">—</strong></div>
+            </div>
+          </section>
         </section>
 
         <section class="page" id="page-captures">
@@ -318,25 +328,15 @@
       </main>
     </div>
 
-    <dialog id="roverDialog" class="modal rover-modal">
+    <dialog id="imuDialog" class="modal imu-modal">
       <div class="modal-header">
-        <div><p class="eyebrow">MPU6050 ATTITUDE</p><h2>Live 3D rover</h2></div>
-        <div class="rover-modal-actions">
-          <button class="motion-action" type="button" id="roverZeroYaw">Zero yaw</button>
+        <div><p class="eyebrow">MPU6050</p><h2>Motion details</h2></div>
+        <div class="imu-modal-actions">
+          <button class="motion-action" type="button" id="zeroYawButton" title="Use the current rover direction as 0 degrees">Zero yaw</button>
           <button class="icon-button modal-close" aria-label="Close">×</button>
         </div>
       </div>
-      <div class="rover-stage">
-        <canvas id="roverCanvas" role="img" aria-label="Live 3D rover orientation"></canvas>
-        <div class="rover-axis-key" aria-hidden="true"><span class="axis-x">X</span><span class="axis-y">Y</span><span class="axis-z">Z</span></div>
-        <div class="rover-waiting" id="roverWaiting">Waiting for MPU6050 data</div>
-      </div>
-      <div class="rover-readouts">
-        <div><span>ROLL</span><strong id="roverRoll">—</strong></div>
-        <div><span>PITCH</span><strong id="roverPitch">—</strong></div>
-        <div><span>RELATIVE YAW</span><strong id="roverYaw">—</strong></div>
-        <p>Yaw is relative and wrapped to ±180°. Zero it whenever the rover is pointed in your chosen reference direction.</p>
-      </div>
+      <div class="imu-modal-body" id="imuDialogBody"></div>
     </dialog>
 
     <dialog id="photoDialog" class="modal photo-modal">
@@ -516,6 +516,6 @@
     </div>
 
     <div class="toast-stack" id="toastStack"></div>
-    <script src="/assets/app.js?v=20260827-6"></script>
+    <script src="/assets/app.js?v=20260827-7"></script>
   </body>
 </html>
