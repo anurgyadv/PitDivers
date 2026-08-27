@@ -99,7 +99,7 @@ def main() -> None:
                              "poisson = watertight surfaces (can balloon on open scenes)")
     parser.add_argument("--voxel", type=float, default=0.0,
                         help="Downsample voxel size in model units (0 = auto to hit --target-points)")
-    parser.add_argument("--target-points", type=int, default=600_000,
+    parser.add_argument("--target-points", type=int, default=1200000,
                         help="Auto-downsample aims for roughly this many points. Higher keeps more "
                              "detail but normal orientation gets slow past ~1M; lower for speed.")
     parser.add_argument("--depth", type=int, default=10,
