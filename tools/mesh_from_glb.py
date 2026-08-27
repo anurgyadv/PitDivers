@@ -94,12 +94,20 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("glb", type=Path, help="Input DA3 point-cloud GLB (e.g. scene.glb)")
     parser.add_argument("--out", type=Path, default=None, help="Output GLB path (default: <input>_mesh.glb)")
+    parser.add_argument("--method", choices=["bpa", "poisson"], default="bpa",
+                        help="bpa = Ball Pivoting (best for open scans; no ballooning); "
+                             "poisson = watertight surfaces (can balloon on open scenes)")
     parser.add_argument("--voxel", type=float, default=0.0,
-                        help="Downsample voxel size in model units (0 = auto from scene size)")
+                        help="Downsample voxel size in model units (0 = auto to hit --target-points)")
+    parser.add_argument("--target-points", type=int, default=600_000,
+                        help="Auto-downsample aims for roughly this many points. Higher keeps more "
+                             "detail but normal orientation gets slow past ~1M; lower for speed.")
     parser.add_argument("--depth", type=int, default=10,
-                        help="Poisson octree depth: higher = more detail + slower (try 9-12)")
-    parser.add_argument("--density-quantile", type=float, default=0.02,
-                        help="Trim this lowest fraction of Poisson vertices to remove balloon artefacts")
+                        help="[poisson] Octree depth: higher = more detail + slower (try 9-12)")
+    parser.add_argument("--density-quantile", type=float, default=0.04,
+                        help="[poisson] Trim this lowest fraction of vertices to remove balloon artefacts")
+    parser.add_argument("--radius-mult", type=float, default=2.0,
+                        help="[bpa] Ball radius as a multiple of average point spacing (try 1.5-3)")
     parser.add_argument("--neighbors", type=int, default=20, help="Statistical outlier: neighbours")
     parser.add_argument("--std-ratio", type=float, default=2.0, help="Statistical outlier: std ratio")
     parser.add_argument("--no-preview", action="store_true", help="Do not open an Open3D preview window")
@@ -116,12 +124,30 @@ def main() -> None:
     pcd.colors = o3d.utility.Vector3dVector(np.clip(rgb, 0, 1))
     print(f"Loaded {len(xyz):,} points from {args.glb.name}")
 
+    diag = float(np.linalg.norm(np.asarray(pcd.get_max_bound()) - np.asarray(pcd.get_min_bound())))
     voxel = args.voxel
     if voxel <= 0:
-        diag = float(np.linalg.norm(np.asarray(pcd.get_max_bound()) - np.asarray(pcd.get_min_bound())))
-        voxel = max(diag * 0.0025, 1e-6)
-    pcd = pcd.voxel_down_sample(voxel)
-    print(f"Voxel downsample (size={voxel:.5f}) -> {len(pcd.points):,} points")
+        # Auto-pick a voxel that keeps roughly --target-points, instead of a
+        # fixed fraction that can decimate a dense cloud (5M -> 180k).
+        if len(pcd.points) > args.target_points:
+            voxel = diag * 0.0012
+            for _ in range(12):
+                trial = pcd.voxel_down_sample(voxel)
+                count = len(trial.points)
+                if count > args.target_points * 1.4:
+                    voxel *= 1.3
+                elif count < args.target_points * 0.6:
+                    voxel /= 1.3
+                else:
+                    break
+        else:
+            voxel = 0.0
+    if voxel > 0:
+        pcd = pcd.voxel_down_sample(voxel)
+        print(f"Voxel downsample (size={voxel:.5f}) -> {len(pcd.points):,} points")
+    else:
+        voxel = diag * 0.001  # spacing estimate for normal/BPA radii below
+        print(f"No downsample ({len(pcd.points):,} points under target)")
 
     pcd, _ = pcd.remove_statistical_outlier(nb_neighbors=args.neighbors, std_ratio=args.std_ratio)
     print(f"Outlier removal -> {len(pcd.points):,} points")
@@ -129,17 +155,31 @@ def main() -> None:
         sys.exit("Too few points survived cleaning; try a smaller --voxel or looser --std-ratio")
 
     pcd.estimate_normals(o3d.geometry.KDTreeSearchParamHybrid(radius=voxel * 3.0, max_nn=30))
+    print(f"Orienting normals for {len(pcd.points):,} points (can take a minute on large clouds)…")
     pcd.orient_normals_consistent_tangent_plane(30)
-    print("Estimated and oriented normals")
 
-    mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=args.depth)
-    densities = np.asarray(densities)
-    if 0.0 < args.density_quantile < 1.0 and densities.size:
-        keep = densities > np.quantile(densities, args.density_quantile)
-        mesh.remove_vertices_by_mask(~keep)
-    mesh.compute_vertex_normals()
-    print(f"Poisson mesh (depth={args.depth}) -> {len(mesh.vertices):,} vertices, "
-          f"{len(mesh.triangles):,} triangles")
+    if args.method == "bpa":
+        # Ball Pivoting hugs the actual points — ideal for open scans (mine
+        # walls, tunnels) where Poisson would balloon across the gaps.
+        spacing = float(np.mean(pcd.compute_nearest_neighbor_distance()))
+        radii = [spacing * args.radius_mult, spacing * args.radius_mult * 2.0]
+        mesh = o3d.geometry.TriangleMesh.create_from_point_cloud_ball_pivoting(
+            pcd, o3d.utility.DoubleVector(radii))
+        mesh.compute_vertex_normals()
+        print(f"Ball-pivoting mesh -> {len(mesh.vertices):,} vertices, {len(mesh.triangles):,} triangles")
+    else:
+        mesh, densities = o3d.geometry.TriangleMesh.create_from_point_cloud_poisson(pcd, depth=args.depth)
+        densities = np.asarray(densities)
+        if 0.0 < args.density_quantile < 1.0 and densities.size:
+            keep = densities > np.quantile(densities, args.density_quantile)
+            mesh.remove_vertices_by_mask(~keep)
+        # Poisson extrapolates well beyond the data; crop back to the cloud.
+        mn = np.asarray(pcd.get_min_bound()); mx = np.asarray(pcd.get_max_bound())
+        pad = (mx - mn) * 0.02
+        mesh = mesh.crop(o3d.geometry.AxisAlignedBoundingBox(mn - pad, mx + pad))
+        mesh.compute_vertex_normals()
+        print(f"Poisson mesh (depth={args.depth}) -> {len(mesh.vertices):,} vertices, "
+              f"{len(mesh.triangles):,} triangles")
 
     out = args.out or args.glb.with_name(f"{args.glb.stem}_mesh.glb")
     export_glb(mesh, out)
