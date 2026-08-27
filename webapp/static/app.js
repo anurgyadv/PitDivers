@@ -12,6 +12,10 @@ const state = {
   lastCompletedJobs: new Set(),
   filmstrip: { capture: null, count: 0 },
   openChart: null,
+  photoSelection: { capture: null, selected: new Set() },
+  reconstructFrames: null,
+  expandedLogs: new Set(),
+  logPopoutJob: null,
 };
 
 const MAX_SENSOR_POINTS = 1500;       // ~1 hour of history at 2.5s cadence
@@ -657,6 +661,8 @@ async function openPhotos(captureName) {
   const dialog = $("#photoDialog");
   $("#photoDialogTitle").textContent = captureName;
   $("#photoGrid").innerHTML = `<div class="empty-card"><div>Loading photos…</div></div>`;
+  state.photoSelection = { capture: captureName, selected: new Set() };
+  updatePhotoSelection();
   dialog.showModal();
   try {
     let offset = 0;
@@ -669,20 +675,63 @@ async function openPhotos(captureName) {
       offset += page.photos.length;
       if (!page.photos.length) break;
     }
-    $("#photoSummary").textContent = `${photos.length} photos • click any frame for full size`;
+    $("#photoSummary").textContent = `${photos.length} photos • tick frames for reconstruction, or open one full size`;
+    $("#photoTotalCount").textContent = String(photos.length);
     $("#photoGrid").innerHTML = photos.map((photo) => `
-      <button data-photo-url="${escapeHtml(photo.url)}" data-photo-name="${escapeHtml(photo.name)}" title="${escapeHtml(photo.name)}">
+      <button class="photo-cell" type="button" data-frame="${escapeHtml(photo.name)}" aria-pressed="false" title="${escapeHtml(photo.name)}">
         <img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.name)}" loading="lazy" />
+        <span class="photo-check">✓</span>
+        <span class="photo-zoom" data-photo-url="${escapeHtml(photo.url)}" data-photo-name="${escapeHtml(photo.name)}" title="Open full size">⛶</span>
       </button>`).join("");
+    updatePhotoSelection();
   } catch (error) {
     $("#photoGrid").innerHTML = `<div class="empty-card"><div><strong>Could not load photos</strong>${escapeHtml(error.message)}</div></div>`;
   }
 }
 
-function openReconstruct(captureName) {
+function togglePhotoFrame(name) {
+  const selected = state.photoSelection.selected;
+  if (selected.has(name)) selected.delete(name); else selected.add(name);
+  const cell = $(`.photo-cell[data-frame="${CSS.escape(name)}"]`);
+  if (cell) {
+    const on = selected.has(name);
+    cell.classList.toggle("selected", on);
+    cell.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  updatePhotoSelection();
+}
+
+function setPhotoSelectionAll(select) {
+  const selected = state.photoSelection.selected;
+  selected.clear();
+  if (select) {
+    for (const cell of $$(".photo-cell")) selected.add(cell.dataset.frame);
+  }
+  for (const cell of $$(".photo-cell")) {
+    const on = selected.has(cell.dataset.frame);
+    cell.classList.toggle("selected", on);
+    cell.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  updatePhotoSelection();
+}
+
+function updatePhotoSelection() {
+  const count = state.photoSelection.selected.size;
+  $("#photoSelectedCount").textContent = String(count);
+  const build = $("#photoBuildSelected");
+  build.disabled = count < 2;
+  build.textContent = count > 0 ? `Build 3D from ${count} frame${count === 1 ? "" : "s"}` : "Build 3D from selected";
+}
+
+function openReconstruct(captureName, frames = null) {
   const capture = state.captures.find((item) => item.name === captureName);
+  state.reconstructFrames = frames && frames.length ? frames : null;
   $("#reconstructCapture").value = captureName;
-  $("#reconstructTarget").innerHTML = `<strong>${escapeHtml(captureName)}</strong><br>${capture?.images || 0} keyframes • ${formatBytes(capture?.size_bytes || 0)}`;
+  const total = capture?.images || 0;
+  const scope = state.reconstructFrames
+    ? `${state.reconstructFrames.length} of ${total} frames selected`
+    : `${total} keyframes • ${formatBytes(capture?.size_bytes || 0)}`;
+  $("#reconstructTarget").innerHTML = `<strong>${escapeHtml(captureName)}</strong><br>${escapeHtml(scope)}`;
   $("#reconstructDialog").showModal();
 }
 
@@ -704,8 +753,10 @@ async function submitReconstruction(event) {
         conf_thresh_percentile: Number($("#reconstructConf").value),
         num_max_points: Number($("#reconstructPoints").value),
         show_cameras: $("#reconstructCameras").value === "true",
+        frames: state.reconstructFrames,
       },
     });
+    state.reconstructFrames = null;
     $("#reconstructDialog").close();
     setTab("reconstructions");
     toast("Reconstruction started", `${job.images} images with ${modelName(job.model_id)}`);
@@ -729,22 +780,59 @@ async function refreshJobs() {
       }
     }
     renderJobs();
+    renderLogPopout();
   } catch { /* polling will retry */ }
 }
 
 function renderJobs() {
   const container = $("#activeJobs");
-  const active = state.jobs.jobs.filter((job) => ["queued", "running", "cancelling", "error"].includes(job.state));
-  container.innerHTML = active.map((job) => `
+  const shown = state.jobs.jobs.filter((job) =>
+    ["queued", "running", "cancelling", "error", "cancelled"].includes(job.state));
+  container.innerHTML = shown.map((job) => {
+    const terminal = ["error", "cancelled"].includes(job.state);
+    const expanded = state.expandedLogs.has(job.id);
+    const hasLogs = Boolean(job.logs?.length);
+    const scope = job.selected_frames ? `${job.selected_frames} selected frames` : `${job.images} images`;
+    return `
     <article class="job-card">
       <div class="job-top">
-        <div><p class="eyebrow">${escapeHtml(job.state.toUpperCase())}</p><h3>${escapeHtml(job.capture)} → ${escapeHtml(job.run_name)}</h3><p>${escapeHtml(job.stage)} • ${job.images} images • ${escapeHtml(modelName(job.model_id))}</p></div>
+        <div><p class="eyebrow">${escapeHtml(job.state.toUpperCase())}</p><h3>${escapeHtml(job.capture)} → ${escapeHtml(job.run_name)}</h3><p>${escapeHtml(job.stage)} • ${escapeHtml(scope)} • ${escapeHtml(modelName(job.model_id))}</p></div>
         ${["queued", "running"].includes(job.state) ? `<button class="button danger" data-cancel-job="${escapeHtml(job.id)}">Stop</button>` : ""}
       </div>
       <div class="progress-track"><span style="width:${Number(job.progress || 0)}%"></span></div>
       <div class="job-foot"><span>${escapeHtml(job.error || job.stage)}</span><strong>${Number(job.progress || 0)}%</strong></div>
-      ${job.logs?.length ? `<div class="job-logs">${escapeHtml(job.logs.slice(-8).join("\n"))}</div>` : ""}
-    </article>`).join("");
+      <div class="job-actions">
+        ${hasLogs ? `<button class="button secondary" data-toggle-logs="${escapeHtml(job.id)}">${expanded ? "Hide" : "Show"} terminal</button>` : ""}
+        ${hasLogs ? `<button class="button secondary" data-pop-logs="${escapeHtml(job.id)}">Pop out</button>` : ""}
+        ${terminal ? `<button class="button danger" data-dismiss-job="${escapeHtml(job.id)}">Dismiss</button>` : ""}
+      </div>
+      ${hasLogs ? `<pre class="job-logs${expanded ? "" : " collapsed"}">${escapeHtml(job.logs.slice(-14).join("\n"))}</pre>` : ""}
+    </article>`;
+  }).join("");
+}
+
+function toggleLogs(jobId) {
+  if (state.expandedLogs.has(jobId)) state.expandedLogs.delete(jobId);
+  else state.expandedLogs.add(jobId);
+  renderJobs();
+}
+
+function openLogPopout(jobId) {
+  state.logPopoutJob = jobId;
+  const job = state.jobs.jobs.find((item) => item.id === jobId);
+  $("#logDialogTitle").textContent = job ? `${job.capture} → ${job.run_name}` : "Reconstruction log";
+  renderLogPopout();
+  $("#logDialog").showModal();
+}
+
+function renderLogPopout() {
+  if (!state.logPopoutJob) return;
+  const body = $("#logDialogBody");
+  if (!body) return;
+  const job = state.jobs.jobs.find((item) => item.id === state.logPopoutJob);
+  const nearBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 40;
+  body.textContent = job?.logs?.length ? job.logs.join("\n") : "No output yet.";
+  if (nearBottom) body.scrollTop = body.scrollHeight;
 }
 
 async function cancelJob(jobId) {
@@ -754,6 +842,17 @@ async function cancelJob(jobId) {
     await refreshJobs();
   } catch (error) {
     toast("Could not stop job", error.message, "error");
+  }
+}
+
+async function dismissJob(jobId) {
+  try {
+    await api(`/api/jobs/${encodeURIComponent(jobId)}/dismiss`, { method: "POST" });
+    state.expandedLogs.delete(jobId);
+    if (state.logPopoutJob === jobId) { state.logPopoutJob = null; $("#logDialog").close(); }
+    await refreshJobs();
+  } catch (error) {
+    toast("Could not dismiss job", error.message, "error");
   }
 }
 
@@ -784,10 +883,28 @@ function renderRuns() {
         <div class="asset-meta"><span>${formatBytes(run.size_bytes)}</span><span>Interactive point cloud</span></div>
         <div class="asset-actions">
           <button class="button primary" data-view-run="${escapeHtml(run.name)}">Open 3D viewer</button>
+          <button class="button secondary" data-rename-run="${escapeHtml(run.name)}">Rename</button>
           <a class="button secondary" href="${escapeHtml(run.download_url)}">Download</a>
         </div>
       </div>
     </article>`).join("");
+}
+
+async function renameRun(runName) {
+  const next = window.prompt("Rename reconstruction", runName);
+  if (next == null) return;
+  const trimmed = next.trim();
+  if (!trimmed || trimmed === runName) return;
+  try {
+    const result = await api(`/api/runs/${encodeURIComponent(runName)}/rename`, {
+      method: "POST",
+      body: { new_name: trimmed },
+    });
+    toast("Reconstruction renamed", `Now “${result.name}”.`);
+    await refreshRuns();
+  } catch (error) {
+    toast("Could not rename", error.message, "error");
+  }
 }
 
 function openViewer(runName) {
@@ -802,6 +919,7 @@ function openViewer(runName) {
 function closeDialog(dialog) {
   if (dialog.id === "viewerDialog") $("#sceneViewer").removeAttribute("src");
   if (dialog.id === "chartDialog") state.openChart = null;
+  if (dialog.id === "logDialog") state.logPopoutJob = null;
   dialog.close();
 }
 
@@ -814,24 +932,45 @@ function bindEvents() {
   $$('[data-go-live]').forEach((button) => button.addEventListener("click", () => setTab("live")));
   $$('[data-go-captures]').forEach((button) => button.addEventListener("click", () => setTab("captures")));
 
+  $("#photoSelectAll").addEventListener("click", () => setPhotoSelectionAll(true));
+  $("#photoSelectNone").addEventListener("click", () => setPhotoSelectionAll(false));
+  $("#photoBuildSelected").addEventListener("click", () => {
+    const frames = [...state.photoSelection.selected];
+    const capture = state.photoSelection.capture;
+    if (!capture || frames.length < 2) return;
+    closeDialog($("#photoDialog"));
+    openReconstruct(capture, frames);
+  });
+
   document.addEventListener("click", (event) => {
     const photoButton = event.target.closest("[data-open-photos]");
     const reconstructButton = event.target.closest("[data-reconstruct]");
     const viewerButton = event.target.closest("[data-view-run]");
     const downloadButton = event.target.closest("[data-download-model]");
     const cancelButton = event.target.closest("[data-cancel-job]");
+    const dismissButton = event.target.closest("[data-dismiss-job]");
+    const toggleLogsButton = event.target.closest("[data-toggle-logs]");
+    const popLogsButton = event.target.closest("[data-pop-logs]");
+    const renameButton = event.target.closest("[data-rename-run]");
     const popChartButton = event.target.closest("[data-pop-chart]");
-    const frameButton = event.target.closest("[data-photo-url]");
+    const zoomButton = event.target.closest("[data-photo-url]");
+    const photoCell = event.target.closest("[data-frame]");
     if (photoButton) openPhotos(photoButton.dataset.openPhotos);
     if (reconstructButton) openReconstruct(reconstructButton.dataset.reconstruct);
     if (viewerButton) openViewer(viewerButton.dataset.viewRun);
     if (downloadButton) downloadModel(downloadButton.dataset.downloadModel);
     if (cancelButton) cancelJob(cancelButton.dataset.cancelJob);
+    if (dismissButton) dismissJob(dismissButton.dataset.dismissJob);
+    if (toggleLogsButton) toggleLogs(toggleLogsButton.dataset.toggleLogs);
+    if (popLogsButton) openLogPopout(popLogsButton.dataset.popLogs);
+    if (renameButton) renameRun(renameButton.dataset.renameRun);
     if (popChartButton) openChartPopout(popChartButton.dataset.popChart);
-    if (frameButton) {
-      $("#lightboxImage").src = frameButton.dataset.photoUrl;
-      $("#lightboxLabel").textContent = frameButton.dataset.photoName;
+    if (zoomButton) {
+      $("#lightboxImage").src = zoomButton.dataset.photoUrl;
+      $("#lightboxLabel").textContent = zoomButton.dataset.photoName;
       $("#lightbox").hidden = false;
+    } else if (photoCell) {
+      togglePhotoFrame(photoCell.dataset.frame);
     }
   });
 

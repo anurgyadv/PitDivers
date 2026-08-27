@@ -1,0 +1,4 @@
+# Dependencies for the offline mesh_from_glb.py tool (not needed by the dashboard).
+open3d>=0.18
+trimesh>=4.0
+numpy>=1.24

@@ -40,12 +40,20 @@ python -m webapp
    the streams and slides in each new frame as it is saved. It scrolls
    horizontally; drag or scroll back to inspect earlier frames (auto-scroll
    pauses while you do), and click any frame to open it full size.
-3. Stop recording, open **Captures**, review the photos, then choose
-   **Build 3D**.
+3. Stop recording, open **Captures**, then **View photos**. In the photo grid
+   you can **tick individual frames** (or **Select all** / **Clear**) and press
+   **Build 3D from selected** to reconstruct only those frames; the ⛶ button on
+   a frame opens it full size. Choosing **Build 3D** on the capture card instead
+   uses every frame. Selecting a focused set of 25–40 sharp, well-spread frames
+   is also the fix for a `CUDA error: out of memory` — feeding hundreds of
+   frames into one run can exhaust GPU memory.
 4. The dashboard disconnects live mode before reconstruction to avoid two DA3
    processes competing for GPU memory. Progress and logs appear under
-   **3D Models**.
+   **3D Models**. Each job's terminal output is collapsed by default — use
+   **Show terminal** / **Pop out** to inspect it, and **Dismiss** to clear a
+   failed or cancelled job from the list.
 5. Open the finished scene in the integrated viewer or download its GLB file.
+   Use **Rename** on a model card to give a reconstruction a friendlier name.
 
 The **Temperature** and **Humidity** readings render as large environment cards
 with the live value, a status pill (e.g. Normal / Moderate), and a graph of the

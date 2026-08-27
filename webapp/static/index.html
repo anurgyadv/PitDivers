@@ -210,6 +210,22 @@
       </div>
       <div class="photo-summary" id="photoSummary"></div>
       <div class="photo-grid" id="photoGrid"></div>
+      <div class="photo-actions">
+        <div class="photo-select-info"><strong id="photoSelectedCount">0</strong> of <span id="photoTotalCount">0</span> frames selected</div>
+        <div class="photo-select-buttons">
+          <button class="button secondary" type="button" id="photoSelectAll">Select all</button>
+          <button class="button secondary" type="button" id="photoSelectNone">Clear</button>
+          <button class="button primary" type="button" id="photoBuildSelected" disabled>Build 3D from selected</button>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="logDialog" class="modal log-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow">DA3 TERMINAL</p><h2 id="logDialogTitle">Reconstruction log</h2></div>
+        <button class="icon-button modal-close" aria-label="Close">×</button>
+      </div>
+      <pre class="log-dialog-body" id="logDialogBody"></pre>
     </dialog>
 
     <dialog id="viewerDialog" class="modal viewer-modal">
