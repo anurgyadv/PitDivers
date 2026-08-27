@@ -10,9 +10,12 @@ const state = {
   sensorHistory: [],
   streamsAttached: false,
   lastCompletedJobs: new Set(),
+  filmstrip: { capture: null, count: 0 },
+  openChart: null,
 };
 
 const MAX_SENSOR_POINTS = 240;
+const WINDOW_MS = 600000; // 10-minute rolling chart window
 
 const tabMeta = {
   live: ["OPERATIONS", "Live inspection"],
@@ -200,6 +203,54 @@ async function refreshSensors() {
   }
 }
 
+async function refreshFilmstrip() {
+  const strip = $("#filmstrip");
+  const track = $("#filmstripTrack");
+  const live = state.live;
+  const recordingName = live.recording ? live.recording_name : null;
+
+  if (!recordingName) {
+    if (state.filmstrip.capture !== null) {
+      state.filmstrip = { capture: null, count: 0 };
+      track.innerHTML = "";
+    }
+    strip.hidden = true;
+    return;
+  }
+
+  strip.hidden = false;
+  if (state.filmstrip.capture !== recordingName) {
+    state.filmstrip = { capture: recordingName, count: 0 };
+    track.innerHTML = "";
+    $("#filmstripCount").textContent = "0 frames";
+  }
+
+  const have = state.filmstrip.count;
+  if ((live.frames_saved || 0) <= have) return;
+
+  try {
+    const page = await api(`/api/captures/${encodeURIComponent(recordingName)}/photos?offset=${have}&limit=500`);
+    // Guard against a recording that stopped/switched while we were fetching.
+    if (state.filmstrip.capture !== recordingName || !page.photos.length) return;
+    const atEnd = track.scrollLeft + track.clientWidth >= track.scrollWidth - 48;
+    const fragment = document.createDocumentFragment();
+    page.photos.forEach((photo, index) => {
+      const cell = document.createElement("button");
+      cell.type = "button";
+      cell.className = "filmstrip-cell";
+      cell.dataset.photoUrl = photo.url;
+      cell.dataset.photoName = photo.name;
+      cell.innerHTML = `<img src="${escapeHtml(photo.url)}" alt="${escapeHtml(photo.name)}" loading="lazy" /><span>${have + index + 1}</span>`;
+      fragment.append(cell);
+    });
+    track.append(fragment);
+    state.filmstrip.count = have + page.photos.length;
+    $("#filmstripCount").textContent = `${state.filmstrip.count} frame${state.filmstrip.count === 1 ? "" : "s"}`;
+    // Keep the newest frame in view only if the user hasn't scrolled back.
+    if (atEnd) track.scrollLeft = track.scrollWidth;
+  } catch { /* transient during recording; next poll retries */ }
+}
+
 function chartBounds(values, kind) {
   if (kind === "humidity") {
     const minimum = Math.max(0, Math.floor((Math.min(...values) - 5) / 5) * 5);
@@ -212,8 +263,7 @@ function chartBounds(values, kind) {
   return [Math.floor((minimum - padding) * 2) / 2, Math.ceil((maximum + padding) * 2) / 2];
 }
 
-function drawSensorChart(canvasId, valueKey, color, unit) {
-  const canvas = $(`#${canvasId}`);
+function drawSensorChart(canvas, { valueKey, color, unit, compact = false }) {
   if (!canvas) return;
   const bounds = canvas.getBoundingClientRect();
   if (!bounds.width || !bounds.height) return;
@@ -230,33 +280,20 @@ function drawSensorChart(canvasId, valueKey, color, unit) {
   context.setTransform(scale, 0, 0, scale, 0, 0);
   context.clearRect(0, 0, bounds.width, bounds.height);
 
-  const padding = { left: 47, right: 13, top: 15, bottom: 28 };
+  const points = state.sensorHistory;
+  const padding = compact
+    ? { left: 2, right: 2, top: 5, bottom: 3 }
+    : { left: 47, right: 13, top: 15, bottom: 28 };
   const plotWidth = Math.max(1, bounds.width - padding.left - padding.right);
   const plotHeight = Math.max(1, bounds.height - padding.top - padding.bottom);
-  const points = state.sensorHistory;
 
-  context.lineWidth = 1;
-  context.strokeStyle = "rgba(137, 150, 163, 0.14)";
-  for (let index = 0; index <= 4; index += 1) {
-    const y = padding.top + (plotHeight * index) / 4;
-    context.beginPath();
-    context.moveTo(padding.left, y);
-    context.lineTo(padding.left + plotWidth, y);
-    context.stroke();
-  }
-  for (let index = 0; index <= 6; index += 1) {
-    const x = padding.left + (plotWidth * index) / 6;
-    context.beginPath();
-    context.moveTo(x, padding.top);
-    context.lineTo(x, padding.top + plotHeight);
-    context.stroke();
-  }
-
-  context.font = "9px Inter, ui-sans-serif, system-ui, sans-serif";
-  context.fillStyle = "#687580";
-  if (!points.length) {
-    context.textAlign = "center";
-    context.fillText("Waiting for DHT11 readings…", padding.left + plotWidth / 2, padding.top + plotHeight / 2);
+  if (points.length < (compact ? 2 : 1)) {
+    if (!compact) {
+      context.font = "9px Inter, ui-sans-serif, system-ui, sans-serif";
+      context.fillStyle = "#687580";
+      context.textAlign = "center";
+      context.fillText("Waiting for DHT11 readings…", padding.left + plotWidth / 2, padding.top + plotHeight / 2);
+    }
     return;
   }
 
@@ -265,24 +302,48 @@ function drawSensorChart(canvasId, valueKey, color, unit) {
   const range = maximum - minimum || 1;
   const firstTime = points[0].time;
   const lastTime = points.at(-1).time;
-  const displayedWindowMs = Math.max(600000, lastTime - firstTime);
-  const windowStart = lastTime - displayedWindowMs;
-  const xFor = (time) => padding.left + ((time - windowStart) / displayedWindowMs) * plotWidth;
+  // Fill from the left edge and only start scrolling once the 10-minute
+  // window is full, so the first readings grow rightwards instead of being
+  // pinned to the right with an empty left half.
+  const scrolling = lastTime - firstTime > WINDOW_MS;
+  const windowStart = scrolling ? lastTime - WINDOW_MS : firstTime;
+  const xFor = (time) => padding.left + ((time - windowStart) / WINDOW_MS) * plotWidth;
   const yFor = (value) => padding.top + ((maximum - value) / range) * plotHeight;
 
-  context.textAlign = "right";
-  context.textBaseline = "middle";
-  for (let index = 0; index <= 4; index += 1) {
-    const value = maximum - (range * index) / 4;
-    context.fillText(`${value.toFixed(valueKey === "humidity" ? 0 : 1)}${unit}`, padding.left - 7, padding.top + (plotHeight * index) / 4);
-  }
+  if (!compact) {
+    context.lineWidth = 1;
+    context.strokeStyle = "rgba(137, 150, 163, 0.14)";
+    for (let index = 0; index <= 4; index += 1) {
+      const y = padding.top + (plotHeight * index) / 4;
+      context.beginPath();
+      context.moveTo(padding.left, y);
+      context.lineTo(padding.left + plotWidth, y);
+      context.stroke();
+    }
+    for (let index = 0; index <= 6; index += 1) {
+      const x = padding.left + (plotWidth * index) / 6;
+      context.beginPath();
+      context.moveTo(x, padding.top);
+      context.lineTo(x, padding.top + plotHeight);
+      context.stroke();
+    }
 
-  const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
-  context.textBaseline = "alphabetic";
-  context.textAlign = "left";
-  context.fillText(timeFormat.format(new Date(windowStart)), padding.left, bounds.height - 7);
-  context.textAlign = "right";
-  context.fillText(timeFormat.format(new Date(lastTime)), padding.left + plotWidth, bounds.height - 7);
+    context.font = "9px Inter, ui-sans-serif, system-ui, sans-serif";
+    context.fillStyle = "#687580";
+    context.textAlign = "right";
+    context.textBaseline = "middle";
+    for (let index = 0; index <= 4; index += 1) {
+      const value = maximum - (range * index) / 4;
+      context.fillText(`${value.toFixed(valueKey === "humidity" ? 0 : 1)}${unit}`, padding.left - 7, padding.top + (plotHeight * index) / 4);
+    }
+
+    const timeFormat = new Intl.DateTimeFormat(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    context.textBaseline = "alphabetic";
+    context.textAlign = "left";
+    context.fillText(timeFormat.format(new Date(windowStart)), padding.left, bounds.height - 7);
+    context.textAlign = "right";
+    context.fillText(timeFormat.format(new Date(windowStart + WINDOW_MS)), padding.left + plotWidth, bounds.height - 7);
+  }
 
   const gradient = context.createLinearGradient(0, padding.top, 0, padding.top + plotHeight);
   gradient.addColorStop(0, `${color}38`);
@@ -306,30 +367,54 @@ function drawSensorChart(canvasId, valueKey, color, unit) {
     if (index === 0) context.moveTo(x, y); else context.lineTo(x, y);
   });
   context.strokeStyle = color;
-  context.lineWidth = 2;
+  context.lineWidth = compact ? 1.5 : 2;
   context.lineJoin = "round";
   context.lineCap = "round";
-  context.shadowColor = `${color}66`;
-  context.shadowBlur = 8;
+  if (!compact) {
+    context.shadowColor = `${color}66`;
+    context.shadowBlur = 8;
+  }
   context.stroke();
   context.shadowBlur = 0;
 
   const lastPoint = points.at(-1);
   context.beginPath();
-  context.arc(xFor(lastPoint.time), yFor(lastPoint[valueKey]), 3.5, 0, Math.PI * 2);
+  context.arc(xFor(lastPoint.time), yFor(lastPoint[valueKey]), compact ? 2 : 3.5, 0, Math.PI * 2);
   context.fillStyle = color;
   context.fill();
 }
 
-function drawSensorCharts() {
-  drawSensorChart("temperatureChart", "temperature", "#ff7433", "°");
-  drawSensorChart("humidityChart", "humidity", "#29d3c2", "%");
+const CHART_META = {
+  temperature: { valueKey: "temperature", color: "#ff7433", unit: "°", rangeUnit: "°C", label: "Temperature history", cyan: false },
+  humidity: { valueKey: "humidity", color: "#29d3c2", unit: "%", rangeUnit: "% RH", label: "Humidity history", cyan: true },
+};
 
-  if (!state.sensorHistory.length) return;
-  const temperatures = state.sensorHistory.map((point) => point.temperature);
-  const humidities = state.sensorHistory.map((point) => point.humidity);
-  $("#temperatureRange").textContent = `${Math.min(...temperatures).toFixed(1)}–${Math.max(...temperatures).toFixed(1)} °C`;
-  $("#humidityRange").textContent = `${Math.min(...humidities).toFixed(1)}–${Math.max(...humidities).toFixed(1)}% RH`;
+function sensorRange(valueKey, rangeUnit) {
+  if (!state.sensorHistory.length) return "Waiting for data";
+  const values = state.sensorHistory.map((point) => point[valueKey]);
+  return `${Math.min(...values).toFixed(1)}–${Math.max(...values).toFixed(1)} ${rangeUnit}`;
+}
+
+function drawSensorCharts() {
+  drawSensorChart($("#temperatureSpark"), { valueKey: "temperature", color: "#ff7433", unit: "°", compact: true });
+  drawSensorChart($("#humiditySpark"), { valueKey: "humidity", color: "#29d3c2", unit: "%", compact: true });
+  if (state.openChart) {
+    const meta = state.openChart;
+    drawSensorChart($("#chartDialogCanvas"), { valueKey: meta.valueKey, color: meta.color, unit: meta.unit, compact: false });
+    $("#chartDialogRange").textContent = sensorRange(meta.valueKey, meta.rangeUnit);
+  }
+}
+
+function openChartPopout(kind) {
+  const meta = CHART_META[kind];
+  if (!meta) return;
+  state.openChart = { kind, ...meta };
+  $("#chartDialogTitle").textContent = meta.label;
+  $("#chartDialogUnit").textContent = meta.rangeUnit;
+  $("#chartDialogRange").textContent = sensorRange(meta.valueKey, meta.rangeUnit);
+  $(".chart-dialog-canvas").classList.toggle("cyan", Boolean(meta.cyan));
+  $("#chartDialog").showModal();
+  window.requestAnimationFrame(drawSensorCharts);
 }
 
 async function toggleConnection() {
@@ -634,6 +719,7 @@ function openViewer(runName) {
 
 function closeDialog(dialog) {
   if (dialog.id === "viewerDialog") $("#sceneViewer").removeAttribute("src");
+  if (dialog.id === "chartDialog") state.openChart = null;
   dialog.close();
 }
 
@@ -652,12 +738,14 @@ function bindEvents() {
     const viewerButton = event.target.closest("[data-view-run]");
     const downloadButton = event.target.closest("[data-download-model]");
     const cancelButton = event.target.closest("[data-cancel-job]");
+    const popChartButton = event.target.closest("[data-pop-chart]");
     const frameButton = event.target.closest("[data-photo-url]");
     if (photoButton) openPhotos(photoButton.dataset.openPhotos);
     if (reconstructButton) openReconstruct(reconstructButton.dataset.reconstruct);
     if (viewerButton) openViewer(viewerButton.dataset.viewRun);
     if (downloadButton) downloadModel(downloadButton.dataset.downloadModel);
     if (cancelButton) cancelJob(cancelButton.dataset.cancelJob);
+    if (popChartButton) openChartPopout(popChartButton.dataset.popChart);
     if (frameButton) {
       $("#lightboxImage").src = frameButton.dataset.photoUrl;
       $("#lightboxLabel").textContent = frameButton.dataset.photoName;
@@ -705,6 +793,7 @@ async function initialize() {
   await refreshAll();
   setInterval(() => refreshLiveStatus(), 1000);
   setInterval(() => refreshSensors(), 2500);
+  setInterval(() => refreshFilmstrip(), 800);
   setInterval(() => refreshJobs(), 1200);
   setInterval(() => { refreshCaptures(); refreshRuns(); refreshModels(); }, 6000);
 }

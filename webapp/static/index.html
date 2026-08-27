@@ -117,38 +117,31 @@
             </article>
           </div>
 
+          <section class="filmstrip panel" id="filmstrip" hidden aria-label="Captured keyframes">
+            <div class="filmstrip-head">
+              <div><p class="eyebrow">RECORDING</p><h2>Captured keyframes</h2></div>
+              <span class="pill" id="filmstripCount">0 frames</span>
+            </div>
+            <div class="filmstrip-track" id="filmstripTrack" tabindex="0"></div>
+          </section>
+
           <div class="metrics-grid">
             <div class="metric panel"><span>CAMERA FPS</span><strong id="cameraFps">—</strong><small>Incoming MJPEG</small></div>
             <div class="metric panel"><span>DA3 FPS</span><strong id="depthFps">—</strong><small>Processed frames</small></div>
             <div class="metric panel"><span>INFERENCE</span><strong id="inferenceTime">—</strong><small>Per depth frame</small></div>
             <div class="metric panel"><span>KEYFRAMES</span><strong id="framesSaved">0</strong><small id="recordingSession">Not recording</small></div>
-            <div class="metric panel"><span>TEMPERATURE</span><strong id="temperatureValue">—</strong><small id="sensorPinLabel">DHT11 · sensor GPIO</small></div>
-            <div class="metric panel"><span>HUMIDITY</span><strong id="humidityValue">—</strong><small id="sensorStatus">Sensor offline</small></div>
+            <div class="metric panel metric-chart">
+              <button class="metric-expand" type="button" data-pop-chart="temperature" title="Pop out temperature graph" aria-label="Pop out temperature graph">⤢</button>
+              <span>TEMPERATURE</span><strong id="temperatureValue">—</strong><small id="sensorPinLabel">DHT11 · sensor GPIO</small>
+              <canvas class="metric-spark" id="temperatureSpark" aria-hidden="true"></canvas>
+            </div>
+            <div class="metric panel metric-chart">
+              <button class="metric-expand" type="button" data-pop-chart="humidity" title="Pop out humidity graph" aria-label="Pop out humidity graph">⤢</button>
+              <span>HUMIDITY</span><strong id="humidityValue">—</strong><small id="sensorStatus">Sensor offline</small>
+              <canvas class="metric-spark" id="humiditySpark" aria-hidden="true"></canvas>
+            </div>
           </div>
 
-          <div class="sensor-chart-grid">
-            <article class="sensor-chart panel">
-              <div class="chart-heading">
-                <div><p class="eyebrow">ENVIRONMENT</p><h2>Temperature history</h2></div>
-                <small id="temperatureRange">Waiting for data</small>
-              </div>
-              <div class="chart-canvas-wrap">
-                <canvas id="temperatureChart" role="img" aria-label="Live DHT11 temperature graph"></canvas>
-              </div>
-              <div class="chart-foot"><span>Rolling 10-minute window</span><span>°C</span></div>
-            </article>
-
-            <article class="sensor-chart panel">
-              <div class="chart-heading">
-                <div><p class="eyebrow cyan">ENVIRONMENT</p><h2>Humidity history</h2></div>
-                <small id="humidityRange">Waiting for data</small>
-              </div>
-              <div class="chart-canvas-wrap">
-                <canvas id="humidityChart" role="img" aria-label="Live DHT11 humidity graph"></canvas>
-              </div>
-              <div class="chart-foot"><span>Rolling 10-minute window</span><span>% RH</span></div>
-            </article>
-          </div>
         </section>
 
         <section class="page" id="page-captures">
@@ -262,6 +255,20 @@
         <div class="warning-box">Live mode must be disconnected while reconstruction runs. This prevents two DA3 processes competing for GPU memory.</div>
         <button class="button primary full" type="submit">Start reconstruction</button>
       </form>
+    </dialog>
+
+    <dialog id="chartDialog" class="modal chart-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow" id="chartDialogEyebrow">ENVIRONMENT</p><h2 id="chartDialogTitle">History</h2></div>
+        <div class="chart-dialog-actions">
+          <small id="chartDialogRange">Waiting for data</small>
+          <button class="icon-button modal-close" aria-label="Close">×</button>
+        </div>
+      </div>
+      <div class="chart-canvas-wrap chart-dialog-canvas">
+        <canvas id="chartDialogCanvas" role="img" aria-label="Sensor history graph"></canvas>
+      </div>
+      <div class="chart-foot"><span>Rolling 10-minute window</span><span id="chartDialogUnit">°C</span></div>
     </dialog>
 
     <div class="lightbox" id="lightbox" hidden>

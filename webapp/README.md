@@ -36,12 +36,21 @@ python -m webapp
    Graph history is kept in the browser for the current dashboard session.
 2. Enter a capture name and press **Start recording**. The original stream
    frames are saved under `data/<capture-name>` at the selected keyframe rate.
+   While recording, a **Captured keyframes** filmstrip appears directly below
+   the streams and slides in each new frame as it is saved. It scrolls
+   horizontally; drag or scroll back to inspect earlier frames (auto-scroll
+   pauses while you do), and click any frame to open it full size.
 3. Stop recording, open **Captures**, review the photos, then choose
    **Build 3D**.
 4. The dashboard disconnects live mode before reconstruction to avoid two DA3
    processes competing for GPU memory. Progress and logs appear under
    **3D Models**.
 5. Open the finished scene in the integrated viewer or download its GLB file.
+
+The **Temperature** and **Humidity** metric tiles draw a live sparkline of the
+DHT11 history right inside the tile. Hover a tile and click the ⤢ button to pop
+the full graph out in a larger window. Both graphs plot a rolling 10-minute
+window that fills from the left and scrolls rightwards as new readings arrive.
 
 Only one reconstruction runs at a time. The **Stop** button terminates its DA3
 subprocess if a run is too large or stalls.
