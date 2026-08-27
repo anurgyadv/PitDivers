@@ -46,6 +46,23 @@ python -m webapp
 Only one reconstruction runs at a time. The **Stop** button terminates its DA3
 subprocess if a run is too large or stalls.
 
+### Reconstruction quality controls
+
+The **Build 3D** dialog exposes the DA3 export quality levers so you can trade
+cleanliness, detail, and GPU memory per run:
+
+- **Processing resolution** — sharper depth per view at higher memory cost.
+  Offline runs can go up to 1008 (live is capped lower for latency).
+- **Confidence filter** — higher percentiles drop low-confidence floating and
+  noise points. This is the single biggest clean-up lever; 55 is the default.
+- **Point budget** — raise alongside resolution for a denser cloud (larger GLB).
+- **Camera wireframes** — hidden by default so the exported scene isn't
+  cluttered by camera-pose pyramids.
+
+If a result still looks fuzzy, the dominant factor is input image quality, not
+these settings — see [`docs/RECONSTRUCTION_QUALITY.md`](../docs/RECONSTRUCTION_QUALITY.md)
+for the full roadmap (firmware still-capture, capture geometry, and meshing).
+
 ## Models
 
 DA3 Small and Base are the practical live choices for the RTX 5070. Large 1.1

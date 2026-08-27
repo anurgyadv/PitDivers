@@ -46,6 +46,9 @@ class ReconstructionRequest(BaseModel):
     capture_name: str
     model_id: str = "depth-anything/DA3-BASE"
     process_res: int = Field(default=504, ge=280, le=1008)
+    conf_thresh_percentile: float = Field(default=55.0, ge=0, le=95)
+    num_max_points: int = Field(default=1_000_000, ge=100_000, le=8_000_000)
+    show_cameras: bool = False
 
 
 class ModelRequest(BaseModel):
@@ -254,7 +257,12 @@ def reconstruct(request: ReconstructionRequest) -> dict:
         )
     try:
         return reconstruction_jobs.start(
-            request.capture_name, request.model_id, request.process_res
+            request.capture_name,
+            request.model_id,
+            request.process_res,
+            request.conf_thresh_percentile,
+            request.num_max_points,
+            request.show_cameras,
         )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(409, str(exc)) from exc

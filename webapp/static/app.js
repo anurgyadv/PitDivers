@@ -534,6 +534,9 @@ async function submitReconstruction(event) {
         capture_name: $("#reconstructCapture").value,
         model_id: $("#reconstructModel").value,
         process_res: Number($("#reconstructRes").value),
+        conf_thresh_percentile: Number($("#reconstructConf").value),
+        num_max_points: Number($("#reconstructPoints").value),
+        show_cameras: $("#reconstructCameras").value === "true",
       },
     });
     $("#reconstructDialog").close();

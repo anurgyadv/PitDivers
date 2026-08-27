@@ -537,7 +537,15 @@ class ReconstructionJobs:
         self._active_job: str | None = None
         self._process: subprocess.Popen[str] | None = None
 
-    def start(self, capture_name: str, model_id: str, process_res: int) -> dict[str, Any]:
+    def start(
+        self,
+        capture_name: str,
+        model_id: str,
+        process_res: int,
+        conf_thresh_percentile: float = 55.0,
+        num_max_points: int = 1_000_000,
+        show_cameras: bool = False,
+    ) -> dict[str, Any]:
         if model_id not in MODEL_IDS:
             raise ValueError("Unknown model")
         capture_dir = path_in(DATA_DIR, capture_name)
@@ -565,6 +573,9 @@ class ReconstructionJobs:
                 "run_name": run_name,
                 "model_id": model_id,
                 "process_res": process_res,
+                "conf_thresh_percentile": conf_thresh_percentile,
+                "num_max_points": num_max_points,
+                "show_cameras": show_cameras,
                 "images": count,
                 "progress": 0,
                 "stage": "Queued",
@@ -602,6 +613,14 @@ class ReconstructionJobs:
             str(run_dir),
             "--process-res",
             str(job["process_res"]),
+            # Quality levers exposed in the reconstruct dialog. A higher
+            # confidence percentile drops low-confidence floating/noise points;
+            # hiding camera wireframes declutters the exported scene.
+            "--conf-thresh-percentile",
+            str(job["conf_thresh_percentile"]),
+            "--num-max-points",
+            str(job["num_max_points"]),
+            "--show-cameras" if job["show_cameras"] else "--no-show-cameras",
         ]
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"

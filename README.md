@@ -9,7 +9,8 @@ telemetry in one local dashboard.
 - ESP32-S3 MJPEG camera streaming
 - Live Depth Anything 3 depth processing on an NVIDIA GPU
 - Keyframe recording and photo review
-- Offline GLB 3D reconstruction and full-screen model viewing
+- Offline GLB 3D reconstruction with tunable quality (confidence filter,
+  resolution, point budget) and full-screen model viewing
 - Live DHT11 temperature and humidity values with rolling graphs
 - Combined Freenove camera + DHT11 firmware for one-device operation
 
@@ -34,6 +35,7 @@ only `secrets.example.h`.
 | `vision/` | Live DA3 depth, mapping, and object-detection scripts |
 | `webapp/` | FastAPI dashboard and browser interface |
 | `third_party/depth-anything-3/` | Vendored DA3 source with local CLI/gallery fixes |
+| `docs/` | Roadmaps and design notes, including reconstruction-quality work |
 
 Captured frames, reconstructed runs, model weights, virtual environments,
 local credentials, and build outputs are excluded from Git.

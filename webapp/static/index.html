@@ -225,9 +225,39 @@
           <label for="reconstructRes">Processing resolution</label>
           <select id="reconstructRes">
             <option value="392">392 · Lower memory</option>
-            <option value="504" selected>504 · Recommended</option>
-            <option value="672">672 · Higher detail / memory</option>
+            <option value="504">504 · Balanced</option>
+            <option value="672" selected>672 · Recommended detail</option>
+            <option value="840">840 · High detail / memory</option>
+            <option value="1008">1008 · Max detail (offline)</option>
           </select>
+          <small>Higher is sharper per view but uses more GPU memory. Offline runs can go higher than live.</small>
+        </div>
+        <div class="field">
+          <label for="reconstructConf">Confidence filter</label>
+          <select id="reconstructConf">
+            <option value="40">40 · Densest (keeps noise)</option>
+            <option value="55" selected>55 · Recommended clean-up</option>
+            <option value="65">65 · Cleaner</option>
+            <option value="70">70 · Aggressive (may thin walls)</option>
+          </select>
+          <small>Drops low-confidence floating / noise points. The biggest single clean-up lever.</small>
+        </div>
+        <div class="field">
+          <label for="reconstructPoints">Point budget</label>
+          <select id="reconstructPoints">
+            <option value="1000000" selected>1.0M · Standard</option>
+            <option value="2000000">2.0M · Denser</option>
+            <option value="4000000">4.0M · Very dense (large file)</option>
+          </select>
+          <small>Raise alongside resolution for a denser cloud; increases the GLB file size.</small>
+        </div>
+        <div class="field">
+          <label for="reconstructCameras">Camera wireframes</label>
+          <select id="reconstructCameras">
+            <option value="false" selected>Hide · cleaner scene</option>
+            <option value="true">Show · debug camera poses</option>
+          </select>
+          <small>Hiding removes the camera pyramids that clutter the exported model.</small>
         </div>
         <div class="warning-box">Live mode must be disconnected while reconstruction runs. This prevents two DA3 processes competing for GPU memory.</div>
         <button class="button primary full" type="submit">Start reconstruction</button>
