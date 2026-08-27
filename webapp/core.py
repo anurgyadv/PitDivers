@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import math
 import os
 import re
 import shutil
@@ -164,7 +165,7 @@ class LivePipeline:
         self.stream_url = "http://192.168.0.69:81/stream"
         self.model_id = "depth-anything/DA3-BASE"
         self.process_res = 504
-        self.inference_fps = 5.0
+        self.inference_fps = 10.0
         self.state = "disconnected"
         self.model_state = "idle"
         self.error: str | None = None
@@ -189,6 +190,10 @@ class LivePipeline:
         self._keyframe_fps = 2.0
         self._keyframe_count = 0
         self._last_keyframe_at = 0.0
+        self._stable_only = False
+        self._motion_skipped = 0
+        self._telemetry_frames = 0
+        self._sensor_snapshot: dict[str, Any] | None = None
 
     def connect(self, stream_url: str, model_id: str, process_res: int, inference_fps: float) -> None:
         self.disconnect()
@@ -302,11 +307,21 @@ class LivePipeline:
                     self._raw_jpeg = encoded.tobytes()
                     self._raw_sequence += 1
                     self._frame_height, self._frame_width = frame.shape[:2]
-                    should_save = (
+                    keyframe_due = (
                         self._recording
                         and self._recording_dir is not None
                         and now - self._last_keyframe_at >= 1.0 / self._keyframe_fps
                     )
+                    sensor_snapshot = None
+                    capture_stable = False
+                    if keyframe_due and self._sensor_snapshot is not None:
+                        sensor_snapshot = json.loads(json.dumps(self._sensor_snapshot))
+                        capture_stable = self._sensor_is_stable(sensor_snapshot)
+                    should_save = keyframe_due and (not self._stable_only or capture_stable)
+                    if keyframe_due:
+                        self._last_keyframe_at = now
+                        if self._stable_only and not capture_stable:
+                            self._motion_skipped += 1
                     record_dir = self._recording_dir
                     frame_number = self._keyframe_count
 
@@ -315,9 +330,17 @@ class LivePipeline:
                     if cv2.imwrite(
                         str(output), frame, [int(cv2.IMWRITE_JPEG_QUALITY), 95]
                     ):
+                        telemetry = {
+                            "frame": output.name,
+                            "captured_at": utc_now(),
+                            "capture_stable": capture_stable,
+                            "sensors": sensor_snapshot,
+                        }
+                        write_json(output.with_suffix(".json"), telemetry)
                         with self._lock:
                             self._keyframe_count += 1
-                            self._last_keyframe_at = now
+                            if sensor_snapshot is not None:
+                                self._telemetry_frames += 1
 
             capture.release()
             with self._lock:
@@ -410,7 +433,33 @@ class LivePipeline:
             except Exception:
                 pass
 
-    def start_recording(self, requested_name: str, keyframe_fps: float) -> str:
+    @staticmethod
+    def _sensor_is_stable(snapshot: dict[str, Any] | None) -> bool:
+        if not snapshot or snapshot.get("mpu_ok") is not True:
+            return False
+        try:
+            accel = snapshot["accel_g"]
+            gyro = snapshot["gyro_dps"]
+            acceleration_magnitude = math.sqrt(
+                float(accel["x"]) ** 2 + float(accel["y"]) ** 2 + float(accel["z"]) ** 2
+            )
+            angular_rate = math.sqrt(
+                float(gyro["x"]) ** 2 + float(gyro["y"]) ** 2 + float(gyro["z"]) ** 2
+            )
+        except (KeyError, TypeError, ValueError):
+            return False
+        return abs(acceleration_magnitude - 1.0) < 0.12 and angular_rate < 12.0
+
+    def update_sensor_snapshot(self, payload: dict[str, Any]) -> None:
+        snapshot = json.loads(json.dumps(payload))
+        snapshot["dashboard_received_at"] = utc_now()
+        snapshot["capture_stable"] = self._sensor_is_stable(snapshot)
+        with self._lock:
+            self._sensor_snapshot = snapshot
+
+    def start_recording(
+        self, requested_name: str, keyframe_fps: float, stable_only: bool = False
+    ) -> str:
         with self._lock:
             if self.state not in {"live", "reconnecting"} or self._latest_frame is None:
                 raise RuntimeError("Connect to a working camera stream before recording")
@@ -435,6 +484,9 @@ class LivePipeline:
             self._keyframe_fps = keyframe_fps
             self._keyframe_count = 0
             self._last_keyframe_at = 0.0
+            self._stable_only = stable_only
+            self._motion_skipped = 0
+            self._telemetry_frames = 0
             manifest = self._manifest("recording")
         write_json(folder / "capture.json", manifest)
         return name
@@ -464,6 +516,9 @@ class LivePipeline:
             "inference_fps": self.inference_fps,
             "keyframe_fps": self._keyframe_fps,
             "frames": self._keyframe_count,
+            "stable_only": self._stable_only,
+            "motion_skipped": self._motion_skipped,
+            "telemetry_frames": self._telemetry_frames,
             "frame_width": self._frame_width,
             "frame_height": self._frame_height,
         }
@@ -489,6 +544,8 @@ class LivePipeline:
                 "recording_name": self._recording_name,
                 "frames_saved": self._keyframe_count,
                 "keyframe_fps": self._keyframe_fps,
+                "stable_only": self._stable_only,
+                "motion_skipped": self._motion_skipped,
             }
 
     def mjpeg(self, kind: str) -> Iterator[bytes]:

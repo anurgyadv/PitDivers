@@ -35,12 +35,13 @@ class ConnectRequest(BaseModel):
     stream_url: str
     model_id: str = "depth-anything/DA3-BASE"
     process_res: int = Field(default=504, ge=280, le=1008)
-    inference_fps: float = Field(default=5.0, gt=0, le=30)
+    inference_fps: float = Field(default=10.0, gt=0, le=30)
 
 
 class RecordRequest(BaseModel):
     name: str = ""
     keyframe_fps: float = Field(default=2.0, gt=0, le=15)
+    stable_only: bool = False
 
 
 class ReconstructionRequest(BaseModel):
@@ -114,6 +115,7 @@ def sensor_readings() -> dict:
         return {"ok": False, "error": f"Sensor service unavailable: {exc}"}
 
     payload["url"] = sensor_url
+    live_pipeline.update_sensor_snapshot(payload)
     return payload
 
 
@@ -143,7 +145,9 @@ def disconnect() -> dict:
 @app.post("/api/live/record/start")
 def record_start(request: RecordRequest) -> dict:
     try:
-        name = live_pipeline.start_recording(request.name, request.keyframe_fps)
+        name = live_pipeline.start_recording(
+            request.name, request.keyframe_fps, request.stable_only
+        )
     except RuntimeError as exc:
         raise HTTPException(409, str(exc)) from exc
     return {"name": name, "status": live_pipeline.status()}

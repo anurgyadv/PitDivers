@@ -16,12 +16,18 @@ const state = {
   reconstructFrames: null,
   expandedLogs: new Set(),
   logPopoutJob: null,
+  currentDistance: null,
+  currentImu: null,
+  imuImpactUntil: 0,
+  yawZero: null,
+  attitudeOverlay: false,
 };
 
-const MAX_SENSOR_POINTS = 1500;       // ~1 hour of history at 2.5s cadence
+const SENSOR_POLL_INTERVAL_MS = 100;  // 10 Hz; matches the HC-SR04 firmware cadence
+const MAX_SENSOR_POINTS = 36000;      // ~1 hour of history at 10 Hz
 const MIN_WINDOW_MS = 60000;          // axis starts at a 1-minute span
 const MAX_WINDOW_MS = 3600000;        // and grows to a 1-hour rolling window
-const ENV_COLORS = { temperature: "#ff7433", humidity: "#29d3c2" };
+const ENV_COLORS = { temperature: "#ff7433", humidity: "#29d3c2", distance: "#ffc65a" };
 
 const tabMeta = {
   live: ["OPERATIONS", "Live inspection"],
@@ -156,6 +162,9 @@ function renderLiveStatus() {
   $("#liveModel").disabled = connected;
   $("#processRes").disabled = connected;
   $("#inferenceFps").disabled = connected;
+  if (connected && Number.isFinite(live.inference_fps)) {
+    $("#inferenceFps").value = String(live.inference_fps);
+  }
 
   const recordButton = $("#recordButton");
   recordButton.disabled = !cameraReady;
@@ -163,6 +172,7 @@ function renderLiveStatus() {
   recordButton.innerHTML = `<span></span>${live.recording ? "Stop recording" : "Start recording"}`;
   $("#captureName").disabled = Boolean(live.recording);
   $("#keyframeFps").disabled = Boolean(live.recording);
+  $("#stableOnly").disabled = Boolean(live.recording);
 
   $("#cameraResolution").textContent = cameraReady ? `${live.width} × ${live.height}` : "No signal";
   $("#cameraFps").textContent = live.capture_fps ? live.capture_fps.toFixed(1) : "—";
@@ -226,27 +236,52 @@ async function refreshLiveStatus(silent = true) {
 async function refreshSensors() {
   try {
     const sensor = await api("/api/sensors");
-    if (!sensor.ok || !Number.isFinite(sensor.temperature_c) || !Number.isFinite(sensor.humidity_percent)) {
-      throw new Error(sensor.error || `DHT11 status ${sensor.status_code ?? "unknown"}`);
+    const dhtValid = sensor.dht_ok !== false && Number.isFinite(sensor.temperature_c) && Number.isFinite(sensor.humidity_percent);
+    const sonarValid = sensor.sonar_ok === true && Number.isFinite(sensor.distance_cm);
+    const imuValid = sensor.mpu_ok === true
+      && [sensor.accel_g?.x, sensor.accel_g?.y, sensor.accel_g?.z, sensor.gyro_dps?.x, sensor.gyro_dps?.y, sensor.gyro_dps?.z, sensor.tilt_deg?.roll, sensor.tilt_deg?.pitch, sensor.tilt_deg?.yaw, sensor.mpu_temperature_c].every(Number.isFinite);
+    if (!dhtValid && !sonarValid && !imuValid) {
+      throw new Error(sensor.error || "No sensor readings available");
     }
-    setEnvValue("temperature", sensor.temperature_c, "°C");
-    setEnvValue("humidity", sensor.humidity_percent, "%");
+    if (dhtValid) {
+      setEnvValue("temperature", sensor.temperature_c, "°C");
+      setEnvValue("humidity", sensor.humidity_percent, "%");
+    } else {
+      setEnvOffline(["temperature", "humidity"]);
+    }
+    if (sonarValid) {
+      state.currentDistance = sensor.distance_cm;
+      setEnvValue("distance", sensor.distance_cm, "cm");
+    } else {
+      state.currentDistance = null;
+      setEnvOffline(["distance"], "Out of range");
+    }
+    if (imuValid) setImuValues(sensor);
+    else setImuOffline();
     state.sensorHistory.push({
       time: Date.now(),
-      temperature: sensor.temperature_c,
-      humidity: sensor.humidity_percent,
+      temperature: dhtValid ? sensor.temperature_c : null,
+      humidity: dhtValid ? sensor.humidity_percent : null,
+      distance: sonarValid ? sensor.distance_cm : null,
+      roll: imuValid ? sensor.tilt_deg.roll : null,
+      pitch: imuValid ? sensor.tilt_deg.pitch : null,
     });
     if (state.sensorHistory.length > MAX_SENSOR_POINTS) {
       state.sensorHistory.splice(0, state.sensorHistory.length - MAX_SENSOR_POINTS);
     }
     drawSensorCharts();
   } catch (error) {
+    state.currentDistance = null;
     setEnvOffline();
+    setImuOffline();
     drawSensorCharts();
   }
 }
 
 function envStatus(kind, value) {
+  if (kind === "distance") {
+    return distanceZone(value);
+  }
   if (kind === "humidity") {
     if (value < 30) return { label: "Dry", tone: "#ffc65a" };
     if (value <= 60) return { label: "Moderate", tone: "#29d3c2" };
@@ -255,6 +290,38 @@ function envStatus(kind, value) {
   if (value < 10) return { label: "Cold", tone: "#4aa8ff" };
   if (value <= 30) return { label: "Normal", tone: "#5ce09a" };
   return { label: "Hot", tone: "#ff5364" };
+}
+
+async function pollSensors() {
+  await refreshSensors();
+  window.setTimeout(pollSensors, SENSOR_POLL_INTERVAL_MS);
+}
+
+function distanceZone(value) {
+  if (value < 30) return { label: "STOP", alert: "OBSTACLE VERY CLOSE", message: "Stop distance reached. Proceed with caution.", tone: "#ff5364", start: -90, end: -45, minimum: 0, maximum: 30 };
+  if (value < 70) return { label: "CAUTION", alert: "OBSTACLE CLOSE", message: "Obstacle inside the caution zone. Reduce speed.", tone: "#ffc65a", start: -45, end: 0, minimum: 30, maximum: 70 };
+  if (value < 150) return { label: "CLEAR", alert: "PATH CLEAR", message: "The immediate path is clear. Continue monitoring.", tone: "#5ce09a", start: 0, end: 45, minimum: 70, maximum: 150 };
+  return { label: "SAFE", alert: "SAFE DISTANCE", message: "Long-range clearance detected ahead.", tone: "#30cf72", start: 45, end: 90, minimum: 150, maximum: 400 };
+}
+
+function gaugeAngle(value, zone) {
+  const clamped = Math.min(Math.max(value, zone.minimum), zone.maximum);
+  const progress = (clamped - zone.minimum) / Math.max(1, zone.maximum - zone.minimum);
+  return zone.start + progress * (zone.end - zone.start);
+}
+
+function updateDistanceGauge(value) {
+  const valid = Number.isFinite(value);
+  const zone = valid ? distanceZone(value) : null;
+  const angle = valid ? gaugeAngle(value, zone) : -90;
+  [$("#distanceNeedle"), $("#distanceDetailNeedle")].forEach((needle) => {
+    if (needle) needle.setAttribute("transform", `rotate(${angle} 200 190)`);
+  });
+  [$("#distanceZoneLabel"), $("#distanceDetailZone")].forEach((label) => {
+    if (!label) return;
+    label.textContent = zone?.label || "WAITING";
+    label.style.color = zone?.tone || "var(--muted)";
+  });
 }
 
 function setEnvValue(kind, value, unit) {
@@ -269,15 +336,15 @@ function setEnvValue(kind, value, unit) {
   }
 }
 
-function setEnvOffline() {
-  for (const kind of ["temperature", "humidity"]) {
+function setEnvOffline(kinds = ["temperature", "humidity", "distance"], label = "Offline") {
+  for (const kind of kinds) {
     const valueEl = $(`#${kind}Value`);
     if (valueEl) valueEl.textContent = "—";
     const pill = $(`#${kind}Status`);
     if (pill) {
       pill.style.color = "var(--muted)";
       pill.style.background = "rgba(137,150,163,.12)";
-      pill.querySelector("em").textContent = "Offline";
+      pill.querySelector("em").textContent = label;
     }
   }
 }
@@ -366,7 +433,7 @@ function drawSensorChart(canvas, { valueKey, color, unit }) {
   context.setTransform(scale, 0, 0, scale, 0, 0);
   context.clearRect(0, 0, bounds.width, bounds.height);
 
-  const points = state.sensorHistory;
+  const points = state.sensorHistory.filter((point) => Number.isFinite(point[valueKey]));
   const padding = { left: 12, right: 44, top: 12, bottom: 22 };
   const plotWidth = Math.max(1, bounds.width - padding.left - padding.right);
   const plotHeight = Math.max(1, bounds.height - padding.top - padding.bottom);
@@ -376,7 +443,7 @@ function drawSensorChart(canvas, { valueKey, color, unit }) {
     context.fillStyle = "#687580";
     context.textAlign = "center";
     context.textBaseline = "middle";
-    context.fillText("Waiting for DHT11 readings…", padding.left + plotWidth / 2, padding.top + plotHeight / 2);
+    context.fillText(valueKey === "distance" ? "Waiting for HC-SR04 readings…" : "Waiting for DHT11 readings…", padding.left + plotWidth / 2, padding.top + plotHeight / 2);
     return;
   }
 
@@ -470,25 +537,354 @@ function drawSensorChart(canvas, { valueKey, color, unit }) {
   context.fill();
 }
 
+function recentDistancePoints(windowMs = 30000, includeInvalid = false) {
+  const cutoff = Date.now() - windowMs;
+  const recent = state.sensorHistory.filter((point) => point.time >= cutoff);
+  return includeInvalid ? recent : recent.filter((point) => Number.isFinite(point.distance));
+}
+
+function drawDistanceDetailChart() {
+  const canvas = $("#distanceDetailChart");
+  if (!canvas || !$("#distanceDialog")?.open) return;
+  const bounds = canvas.getBoundingClientRect();
+  if (!bounds.width || !bounds.height) return;
+
+  const scale = Math.min(window.devicePixelRatio || 1, 2);
+  canvas.width = Math.round(bounds.width * scale);
+  canvas.height = Math.round(bounds.height * scale);
+  const context = canvas.getContext("2d");
+  context.setTransform(scale, 0, 0, scale, 0, 0);
+  context.clearRect(0, 0, bounds.width, bounds.height);
+
+  const padding = { left: 48, right: 14, top: 14, bottom: 27 };
+  const width = Math.max(1, bounds.width - padding.left - padding.right);
+  const height = Math.max(1, bounds.height - padding.top - padding.bottom);
+  const now = Date.now();
+  const start = now - 30000;
+  const points = recentDistancePoints();
+  const xFor = (time) => padding.left + ((time - start) / 30000) * width;
+  const yFor = (value) => padding.top + ((400 - Math.min(Math.max(value, 0), 400)) / 400) * height;
+
+  context.font = "10px Inter, ui-sans-serif, system-ui, sans-serif";
+  context.textBaseline = "middle";
+  for (const value of [0, 100, 200, 300, 400]) {
+    const y = yFor(value);
+    context.strokeStyle = "rgba(137,150,163,.13)";
+    context.lineWidth = 1;
+    context.setLineDash([]);
+    context.beginPath(); context.moveTo(padding.left, y); context.lineTo(padding.left + width, y); context.stroke();
+    context.fillStyle = "#687580";
+    context.textAlign = "right";
+    context.fillText(`${value} cm`, padding.left - 7, y);
+  }
+
+  for (const threshold of [{ value: 30, label: "STOP", color: "#ff5364" }, { value: 70, label: "CAUTION", color: "#ffc65a" }, { value: 150, label: "CLEAR", color: "#51c449" }]) {
+    const y = yFor(threshold.value);
+    context.strokeStyle = threshold.color;
+    context.globalAlpha = .7;
+    context.setLineDash([7, 6]);
+    context.beginPath(); context.moveTo(padding.left, y); context.lineTo(padding.left + width, y); context.stroke();
+    context.setLineDash([]);
+    context.globalAlpha = 1;
+    context.fillStyle = threshold.color;
+    context.textAlign = "right";
+    context.fillText(threshold.label, padding.left + width - 3, y - 8);
+  }
+
+  context.fillStyle = "#56626d";
+  context.textBaseline = "alphabetic";
+  for (let seconds = 30; seconds >= 0; seconds -= 5) {
+    const x = padding.left + ((30 - seconds) / 30) * width;
+    context.textAlign = seconds === 30 ? "left" : seconds === 0 ? "right" : "center";
+    context.fillText(seconds ? `${seconds}s` : "NOW", x, bounds.height - 6);
+  }
+
+  if (points.length < 2) {
+    context.fillStyle = "#687580";
+    context.textAlign = "center";
+    context.textBaseline = "middle";
+    context.fillText("Waiting for distance history…", padding.left + width / 2, padding.top + height / 2);
+    return;
+  }
+
+  const gradient = context.createLinearGradient(0, padding.top, 0, padding.top + height);
+  gradient.addColorStop(0, "rgba(255,198,90,.25)");
+  gradient.addColorStop(1, "rgba(255,83,100,.02)");
+  context.beginPath();
+  points.forEach((point, index) => index ? context.lineTo(xFor(point.time), yFor(point.distance)) : context.moveTo(xFor(point.time), yFor(point.distance)));
+  context.lineTo(xFor(points.at(-1).time), padding.top + height);
+  context.lineTo(xFor(points[0].time), padding.top + height);
+  context.closePath(); context.fillStyle = gradient; context.fill();
+
+  context.beginPath();
+  points.forEach((point, index) => index ? context.lineTo(xFor(point.time), yFor(point.distance)) : context.moveTo(xFor(point.time), yFor(point.distance)));
+  const currentZone = distanceZone(points.at(-1).distance);
+  context.strokeStyle = currentZone.tone;
+  context.lineWidth = 3;
+  context.lineJoin = "round";
+  context.lineCap = "round";
+  context.shadowColor = `${currentZone.tone}88`;
+  context.shadowBlur = 9;
+  context.stroke();
+  context.shadowBlur = 0;
+
+  const latest = points.at(-1);
+  context.beginPath(); context.arc(xFor(latest.time), yFor(latest.distance), 5, 0, Math.PI * 2);
+  context.fillStyle = "#ffffff"; context.fill();
+}
+
+function updateDistanceDashboard() {
+  const points = recentDistancePoints();
+  const value = state.currentDistance;
+  updateDistanceGauge(value);
+
+  const detailValue = $("#distanceDetailValue");
+  const alert = $("#distanceDetailAlert");
+  const message = $("#distanceDetailMessage");
+  if (!Number.isFinite(value)) {
+    if (detailValue) detailValue.textContent = "—";
+    if (alert) {
+      alert.style.color = "var(--muted)";
+      alert.style.background = "rgba(137,150,163,.1)";
+      alert.querySelector("em").textContent = "WAITING FOR SENSOR";
+    }
+    if (message) message.textContent = "Connect the HC-SR04 to begin monitoring.";
+  } else {
+    const zone = distanceZone(value);
+    if (detailValue) detailValue.innerHTML = `${value.toFixed(1)}<span>cm</span>`;
+    if (alert) {
+      alert.style.color = zone.tone;
+      alert.style.background = `color-mix(in srgb, ${zone.tone} 15%, transparent)`;
+      alert.querySelector("em").textContent = zone.alert;
+    }
+    if (message) message.textContent = zone.message;
+  }
+
+  const values = points.map((point) => point.distance);
+  const nearest = values.length ? Math.min(...values) : null;
+  const average = values.length ? values.reduce((sum, item) => sum + item, 0) / values.length : null;
+  $("#distanceNearest").textContent = nearest === null ? "—" : `${nearest.toFixed(1)} cm`;
+  $("#distanceAverage").textContent = average === null ? "—" : `${average.toFixed(1)} cm`;
+
+  const ratePoints = recentDistancePoints(10000);
+  let rate = null;
+  if (ratePoints.length >= 2) {
+    const elapsed = (ratePoints.at(-1).time - ratePoints[0].time) / 1000;
+    if (elapsed > 0) rate = (ratePoints[0].distance - ratePoints.at(-1).distance) / elapsed;
+  }
+  const rateEl = $("#distanceApproachRate");
+  const rateNote = $("#distanceApproachNote");
+  if (rate === null) {
+    rateEl.textContent = "—";
+    rateEl.style.color = "";
+    rateNote.textContent = "Waiting";
+  } else if (Math.abs(rate) < .3) {
+    rateEl.textContent = "0.0 cm/s";
+    rateEl.style.color = "#5ce09a";
+    rateNote.textContent = "Holding steady";
+  } else if (rate > 0) {
+    rateEl.textContent = `↓ ${rate.toFixed(1)} cm/s`;
+    rateEl.style.color = "#ff5364";
+    rateNote.textContent = "Getting closer";
+  } else {
+    rateEl.textContent = `↑ ${Math.abs(rate).toFixed(1)} cm/s`;
+    rateEl.style.color = "#5ce09a";
+    rateNote.textContent = "Moving away";
+  }
+
+  const allRecent = recentDistancePoints(30000, true);
+  const validRatio = allRecent.length ? points.length / allRecent.length : 0;
+  const deltas = points.slice(1).map((point, index) => Math.abs(point.distance - points[index].distance));
+  const averageDelta = deltas.length ? deltas.reduce((sum, item) => sum + item, 0) / deltas.length : Infinity;
+  const qualityEl = $("#distanceQuality");
+  const qualityNote = $("#distanceQualityNote");
+  if (!points.length) {
+    qualityEl.textContent = "Waiting"; qualityEl.style.color = "var(--muted)"; qualityNote.textContent = "No samples";
+  } else if (validRatio >= .8 && averageDelta < 8) {
+    qualityEl.textContent = "Stable"; qualityEl.style.color = "#5ce09a"; qualityNote.textContent = "Good echo stability";
+  } else if (validRatio >= .6) {
+    qualityEl.textContent = "Fair"; qualityEl.style.color = "#ffc65a"; qualityNote.textContent = "Some variation";
+  } else {
+    qualityEl.textContent = "Weak"; qualityEl.style.color = "#ff5364"; qualityNote.textContent = "Intermittent echoes";
+  }
+}
+
+function wrapAngle(value) {
+  return ((value + 180) % 360 + 360) % 360 - 180;
+}
+
+function relativeYaw(rawYaw) {
+  if (!Number.isFinite(rawYaw)) return 0;
+  if (!Number.isFinite(state.yawZero)) state.yawZero = rawYaw;
+  return wrapAngle(rawYaw - state.yawZero);
+}
+
+function zeroYaw() {
+  if (!state.currentImu) return;
+  state.yawZero = state.currentImu.tilt_deg.yaw;
+  setImuValues(state.currentImu);
+  toast("Yaw zeroed", "The rover's current direction is now 0°.");
+}
+
+function updateAttitudeOverlay({ roll, pitch, heading, motionStable, danger }) {
+  $("#cameraOverlayWorld").style.transform = `rotate(${-roll.toFixed(2)}deg) translateY(${Math.max(-70, Math.min(70, pitch * 1.45)).toFixed(1)}px)`;
+  $("#cameraOverlayRoll").textContent = `${roll.toFixed(1)}°`;
+  $("#cameraOverlayPitch").textContent = `${pitch.toFixed(1)}°`;
+  $("#cameraOverlayHeading").textContent = `${String(heading).padStart(3, "0")}°`;
+  const status = $("#cameraOverlayState");
+  status.className = `camera-overlay-state ${danger ? "danger" : motionStable ? "stable" : "moving"}`;
+  status.querySelector("span").textContent = danger ? "Attitude warning" : motionStable ? "Stable" : "Moving";
+}
+
+function openMotionDetails() {
+  const dialog = $("#imuDialog");
+  if (!dialog.open) dialog.showModal();
+}
+
+function setImuValues(sensor) {
+  state.currentImu = sensor;
+  const setAxis = (selector, value, digits, unit = "") => {
+    const element = $(selector);
+    if (element) element.innerHTML = `${value.toFixed(digits)}${unit ? `<small>${unit}</small>` : ""}`;
+  };
+  const roll = sensor.tilt_deg.roll;
+  const pitch = sensor.tilt_deg.pitch;
+  const yaw = relativeYaw(sensor.tilt_deg.yaw);
+  setAxis("#imuRoll", roll, 1, "°");
+  setAxis("#imuPitch", pitch, 1, "°");
+  setAxis("#imuYaw", yaw, 1, "°");
+  setAxis("#imuSummaryRoll", roll, 1, "°");
+  setAxis("#imuSummaryPitch", pitch, 1, "°");
+  setAxis("#imuSummaryYaw", yaw, 1, "°");
+  setAxis("#imuAccelX", sensor.accel_g.x, 3);
+  setAxis("#imuAccelY", sensor.accel_g.y, 3);
+  setAxis("#imuAccelZ", sensor.accel_g.z, 3);
+  setAxis("#imuGyroX", sensor.gyro_dps.x, 2);
+  setAxis("#imuGyroY", sensor.gyro_dps.y, 2);
+  setAxis("#imuGyroZ", sensor.gyro_dps.z, 2);
+  setAxis("#imuTemperature", sensor.mpu_temperature_c, 1, "°C");
+  setAxis("#imuSummaryTemperature", sensor.mpu_temperature_c, 1, "°C");
+
+  const angularRate = Math.hypot(sensor.gyro_dps.x, sensor.gyro_dps.y, sensor.gyro_dps.z);
+  const accelerationMagnitude = Math.hypot(sensor.accel_g.x, sensor.accel_g.y, sensor.accel_g.z);
+  const shockLoad = Math.abs(accelerationMagnitude - 1);
+  setAxis("#imuSummaryAcceleration", accelerationMagnitude, 2, "g");
+  setAxis("#imuSummaryRate", angularRate, 1, "°/s");
+  const tiltLimit = Number($("#tiltLimit")?.value || 30);
+  const maximumTilt = Math.max(Math.abs(roll), Math.abs(pitch));
+  const tiltRatio = maximumTilt / tiltLimit;
+  const heading = Math.round(((yaw % 360) + 360) % 360) % 360;
+  const motionStable = angularRate < 12 && shockLoad < 0.12;
+  const now = Date.now();
+  if (shockLoad > 0.55 || angularRate > 150) state.imuImpactUntil = now + 1600;
+  const impactActive = now < state.imuImpactUntil;
+  const captureReady = motionStable && tiltRatio < 1;
+  const vibrationPercent = Math.min(100, Math.max(shockLoad / 0.65, angularRate / 160) * 100);
+  const direction = Math.abs(roll) >= Math.abs(pitch)
+    ? (roll < 0 ? "LEFT LEAN" : "RIGHT LEAN")
+    : (pitch < 0 ? "NOSE DOWN" : "NOSE UP");
+
+  $("#imuHorizonWorld").style.transform = `rotate(${-roll.toFixed(2)}deg) translateY(${Math.max(-80, Math.min(80, pitch * 2)).toFixed(1)}px)`;
+  $("#imuRover").style.transform = `translate(-50%, -50%) rotate(${Math.max(-12, Math.min(12, roll * .18)).toFixed(2)}deg)`;
+  $("#imuHeading").textContent = `${String(heading).padStart(3, "0")}°`;
+  $("#tiltLimitValue").textContent = `${tiltLimit.toFixed(0)}°`;
+  $("#imuAccelerationMagnitude").textContent = accelerationMagnitude.toFixed(2);
+  $("#imuAngularRate").textContent = angularRate.toFixed(1);
+  $("#imuVibrationValue").textContent = `${vibrationPercent.toFixed(0)}%`;
+  $("#imuVibrationBar").style.width = `${vibrationPercent}%`;
+
+  const safetyBanner = $("#imuSafetyBanner");
+  safetyBanner.className = `imu-safety-banner ${tiltRatio >= 1 ? "danger" : tiltRatio >= .75 ? "caution" : "safe"}`;
+  $("#imuSafetyStatus").textContent = tiltRatio >= 1 ? "ROLLOVER RISK" : tiltRatio >= .75 ? "EDGE OF ENVELOPE" : "ATTITUDE SAFE";
+  $("#imuSafetyNote").textContent = tiltRatio >= 1
+    ? `${direction} · reduce tilt immediately`
+    : tiltRatio >= .75
+      ? `${direction} · ${(tiltLimit - maximumTilt).toFixed(1)}° margin remaining`
+      : `Inside the ±${tiltLimit.toFixed(0)}° safety envelope`;
+  $("#imuTiltRisk").textContent = `${maximumTilt.toFixed(1)}°`;
+
+  const captureCard = $("#imuCaptureCard");
+  captureCard.className = `motion-status-card ${captureReady ? "ready" : "warn"}`;
+  $("#imuCaptureState").textContent = captureReady ? "FRAME READY" : "HOLD FRAME";
+  $("#imuCaptureNote").textContent = captureReady
+    ? "Low motion · keyframe eligible"
+    : tiltRatio >= 1 ? "Unsafe rover attitude" : "Movement may blur reconstruction";
+
+  const impactCard = $("#imuImpactCard");
+  impactCard.className = `motion-status-card ${impactActive ? "danger" : vibrationPercent > 35 ? "warn" : "ready"}`;
+  $("#imuImpactState").textContent = impactActive ? "IMPACT DETECTED" : vibrationPercent > 35 ? "ROUGH TERRAIN" : "NO IMPACT";
+  $("#imuImpactNote").textContent = `${shockLoad.toFixed(2)} g dynamic load`;
+
+  const status = $("#imuLive");
+  status.style.color = tiltRatio >= 1 || impactActive ? "#ff5364" : !motionStable ? "#ffc65a" : "#5ce09a";
+  status.querySelector("em").textContent = tiltRatio >= 1 ? "ROLLOVER RISK" : impactActive ? "IMPACT" : motionStable ? "STABLE" : "MOVING";
+  updateAttitudeOverlay({ roll, pitch, heading, motionStable, danger: tiltRatio >= 1 || impactActive });
+}
+
+function setImuOffline() {
+  state.currentImu = null;
+  ["imuRoll", "imuPitch", "imuYaw", "imuAccelX", "imuAccelY", "imuAccelZ", "imuGyroX", "imuGyroY", "imuGyroZ", "imuTemperature"].forEach((id) => {
+    const element = $(`#${id}`);
+    if (element) element.textContent = "—";
+  });
+  const status = $("#imuLive");
+  if (status) {
+    status.style.color = "var(--muted)";
+    status.querySelector("em").textContent = "OFFLINE";
+  }
+  $("#imuHeading").textContent = "—";
+  $("#imuAccelerationMagnitude").textContent = "—";
+  $("#imuAngularRate").textContent = "—";
+  $("#imuVibrationValue").textContent = "—";
+  $("#imuVibrationBar").style.width = "0";
+  $("#imuHorizonWorld").style.transform = "rotate(0deg) translateY(0)";
+  $("#imuRover").style.transform = "translate(-50%, -50%) rotate(0deg)";
+  $("#imuSafetyBanner").className = "imu-safety-banner waiting";
+  $("#imuSafetyStatus").textContent = "WAITING FOR MPU";
+  $("#imuSafetyNote").textContent = "Live rollover protection will appear here";
+  $("#imuTiltRisk").textContent = "—";
+  $("#imuCaptureCard").className = "motion-status-card";
+  $("#imuCaptureState").textContent = "WAITING";
+  $("#imuCaptureNote").textContent = "Motion gate unavailable";
+  $("#imuImpactCard").className = "motion-status-card";
+  $("#imuImpactState").textContent = "WAITING";
+  $("#imuImpactNote").textContent = "No motion sample";
+  $("#cameraOverlayState").className = "camera-overlay-state";
+  $("#cameraOverlayState span").textContent = "MPU waiting";
+  ["cameraOverlayRoll", "cameraOverlayPitch", "cameraOverlayHeading", "imuSummaryRoll", "imuSummaryPitch", "imuSummaryYaw", "imuSummaryAcceleration", "imuSummaryRate", "imuSummaryTemperature"].forEach((id) => {
+    const element = $(`#${id}`); if (element) element.textContent = "—";
+  });
+}
+
 const CHART_META = {
   temperature: { valueKey: "temperature", color: "#ff7433", unit: "°", rangeUnit: "°C", label: "Temperature history", cyan: false },
   humidity: { valueKey: "humidity", color: "#29d3c2", unit: "%", rangeUnit: "% RH", label: "Humidity history", cyan: true },
+  distance: { valueKey: "distance", color: "#ffc65a", unit: "cm", rangeUnit: "cm", label: "Distance history", cyan: false },
 };
 
 function sensorRange(valueKey, rangeUnit) {
-  if (!state.sensorHistory.length) return "Waiting for data";
-  const values = state.sensorHistory.map((point) => point[valueKey]);
+  const values = state.sensorHistory.map((point) => point[valueKey]).filter(Number.isFinite);
+  if (!values.length) return "Waiting for data";
   return `${Math.min(...values).toFixed(1)}–${Math.max(...values).toFixed(1)} ${rangeUnit}`;
 }
 
 function drawSensorCharts() {
   drawSensorChart($("#temperatureSpark"), { valueKey: "temperature", color: ENV_COLORS.temperature, unit: "°" });
   drawSensorChart($("#humiditySpark"), { valueKey: "humidity", color: ENV_COLORS.humidity, unit: "%" });
+  updateDistanceDashboard();
+  drawDistanceDetailChart();
   if (state.openChart) {
     const meta = state.openChart;
     drawSensorChart($("#chartDialogCanvas"), { valueKey: meta.valueKey, color: meta.color, unit: meta.unit });
     $("#chartDialogRange").textContent = sensorRange(meta.valueKey, meta.rangeUnit);
   }
+}
+
+function openDistanceDashboard() {
+  const dialog = $("#distanceDialog");
+  if (!dialog.open) dialog.showModal();
+  updateDistanceDashboard();
+  window.requestAnimationFrame(drawDistanceDetailChart);
 }
 
 function openChartPopout(kind) {
@@ -549,9 +945,12 @@ async function toggleRecording() {
         body: {
           name: $("#captureName").value.trim(),
           keyframe_fps: Number($("#keyframeFps").value),
+          stable_only: $("#stableOnly").checked,
         },
       });
-      toast("Recording started", `Saving keyframes to data/${result.name}`);
+      toast("Recording started", $("#stableOnly").checked
+        ? `Saving MPU-approved stable frames to data/${result.name}`
+        : `Saving keyframes and synchronized telemetry to data/${result.name}`);
     }
     await refreshLiveStatus(false);
   } catch (error) {
@@ -927,6 +1326,21 @@ function bindEvents() {
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => setTab(button.dataset.tab)));
   $("#connectButton").addEventListener("click", toggleConnection);
   $("#recordButton").addEventListener("click", toggleRecording);
+  $("#tiltLimit").addEventListener("input", () => {
+    $("#tiltLimitValue").textContent = `${Number($("#tiltLimit").value).toFixed(0)}°`;
+    if (state.currentImu) setImuValues(state.currentImu);
+  });
+  $("#zeroYawButton").addEventListener("click", zeroYaw);
+  $("#openImuDialog").addEventListener("click", openMotionDetails);
+  $("#cameraOverlayToggle").addEventListener("click", () => {
+    state.attitudeOverlay = !state.attitudeOverlay;
+    const button = $("#cameraOverlayToggle");
+    const overlay = $("#cameraAttitudeOverlay");
+    button.setAttribute("aria-pressed", String(state.attitudeOverlay));
+    button.textContent = state.attitudeOverlay ? "Overlay on" : "Attitude overlay";
+    overlay.hidden = !state.attitudeOverlay;
+    overlay.setAttribute("aria-hidden", String(!state.attitudeOverlay));
+  });
   $("#refreshButton").addEventListener("click", refreshAll);
   $("#reconstructForm").addEventListener("submit", submitReconstruction);
   $$('[data-go-live]').forEach((button) => button.addEventListener("click", () => setTab("live")));
@@ -955,6 +1369,7 @@ function bindEvents() {
     const popChartButton = event.target.closest("[data-pop-chart]");
     const zoomButton = event.target.closest("[data-photo-url]");
     const photoCell = event.target.closest("[data-frame]");
+    const distanceCard = event.target.closest("[data-open-distance]");
     if (photoButton) openPhotos(photoButton.dataset.openPhotos);
     if (reconstructButton) openReconstruct(reconstructButton.dataset.reconstruct);
     if (viewerButton) openViewer(viewerButton.dataset.viewRun);
@@ -965,12 +1380,20 @@ function bindEvents() {
     if (popLogsButton) openLogPopout(popLogsButton.dataset.popLogs);
     if (renameButton) renameRun(renameButton.dataset.renameRun);
     if (popChartButton) openChartPopout(popChartButton.dataset.popChart);
+    if (distanceCard) openDistanceDashboard();
     if (zoomButton) {
       $("#lightboxImage").src = zoomButton.dataset.photoUrl;
       $("#lightboxLabel").textContent = zoomButton.dataset.photoName;
       $("#lightbox").hidden = false;
     } else if (photoCell) {
       togglePhotoFrame(photoCell.dataset.frame);
+    }
+  });
+
+  $("[data-open-distance]").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      openDistanceDashboard();
     }
   });
 
@@ -1005,6 +1428,9 @@ function updateClock() {
 }
 
 async function initialize() {
+  const imuPanel = $(".env-grid > .imu-card");
+  const imuDialogBody = $("#imuDialogBody");
+  if (imuPanel && imuDialogBody) imuDialogBody.append(imuPanel);
   bindEvents();
   $("#captureName").value = createCaptureName();
   updateClock();
@@ -1013,7 +1439,7 @@ async function initialize() {
   drawSensorCharts();
   await refreshAll();
   setInterval(() => refreshLiveStatus(), 1000);
-  setInterval(() => refreshSensors(), 2500);
+  window.setTimeout(pollSensors, SENSOR_POLL_INTERVAL_MS);
   setInterval(() => refreshFilmstrip(), 800);
   setInterval(() => refreshJobs(), 1200);
   setInterval(() => { refreshCaptures(); refreshRuns(); refreshModels(); }, 6000);

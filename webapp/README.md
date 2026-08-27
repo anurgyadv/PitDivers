@@ -4,8 +4,8 @@ The dashboard wraps the working ESP32 and Depth Anything 3 commands in a local
 web application. It provides:
 
 - live ESP32 MJPEG and DA3 depth views;
-- live DHT11 temperature/humidity values and rolling 10-minute graphs from the
-  combined rover firmware;
+- live DHT11 temperature/humidity, HC-SR04 distance, and MPU6050 motion data
+  from the combined rover firmware;
 - start/stop keyframe recording with named capture folders;
 - capture and photo browsing;
 - cancellable post-run GLB reconstruction jobs;
@@ -32,7 +32,7 @@ python -m webapp
 1. Open **Live**, enter the raw ESP32 URL such as
    `http://192.168.0.69:81/stream`, select a downloaded model, and connect.
    The dashboard derives `http://<camera-ip>:82/sensors` automatically and
-   displays the DHT11 readings and graphs; no separate sensor URL is required.
+   displays DHT11, HC-SR04, and MPU6050 readings; no separate sensor URL is required.
    Graph history is kept in the browser for the current dashboard session.
 2. Enter a capture name and press **Start recording**. The original stream
    frames are saved under `data/<capture-name>` at the selected keyframe rate.
@@ -56,11 +56,15 @@ python -m webapp
    Use **Rename** on a model card to give a reconstruction a friendlier name.
 
 The **Temperature** and **Humidity** readings render as large environment cards
-with the live value, a status pill (e.g. Normal / Moderate), and a graph of the
-DHT11 history drawn right inside the card. Use each card's ⋮ menu to pop the full
-graph out in a larger window. The graph plots a window that grows with elapsed
-time up to a rolling one hour: the newest reading rides the right edge (NOW) and
-history fills to the left, so the line always spans the full width.
+with a live value, status pill, and rolling graph. Use either card's ⋮ menu to
+pop its graph out in a larger window. The **Distance Ahead** card instead shows
+a live four-zone safety arc (Stop, Caution, Clear, Safe). Click anywhere on that
+card to open the full sonar safety dashboard with the 30-second distance graph,
+approach rate, nearest and average distance, and echo-stability summary.
+The sonar firmware and dashboard proxy run at 10 Hz (one sample every 100 ms),
+the MPU6050 is sampled at 20 Hz, and the slower DHT11 remains on its independent
+2-second reading interval. The **Rover Attitude** panel displays roll, pitch,
+yaw, three-axis acceleration, three-axis angular rate, and IMU temperature.
 
 Only one reconstruction runs at a time. The **Stop** button terminates its DA3
 subprocess if a run is too large or stalls.

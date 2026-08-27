@@ -40,6 +40,10 @@ typedef struct {
 } jpg_chunking_t;
 
 #define PART_BOUNDARY "123456789000000000000987654321"
+// This camera falls back to RGB565, so every frame is JPEG-encoded in software.
+// A moderate quality keeps the depth input useful while reducing ESP32 CPU time
+// and network payload compared with the original quality-80 conversion.
+#define PITDIVERS_SOFTWARE_JPEG_QUALITY 70
 static const char *_STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
 static const char *_STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
 static const char *_STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\nX-Timestamp: %d.%06d\r\n\r\n";
@@ -191,7 +195,7 @@ static esp_err_t capture_handler(httpd_req_t *req) {
     res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
   } else {
     jpg_chunking_t jchunk = {req, 0};
-    res = frame2jpg_cb(fb, 80, jpg_encode_stream, &jchunk) ? ESP_OK : ESP_FAIL;
+    res = frame2jpg_cb(fb, PITDIVERS_SOFTWARE_JPEG_QUALITY, jpg_encode_stream, &jchunk) ? ESP_OK : ESP_FAIL;
     httpd_resp_send_chunk(req, NULL, 0);
 #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_INFO
     fb_len = jchunk.len;
@@ -240,7 +244,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
       _timestamp.tv_sec = fb->timestamp.tv_sec;
       _timestamp.tv_usec = fb->timestamp.tv_usec;
       if (fb->format != PIXFORMAT_JPEG) {
-        bool jpeg_converted = frame2jpg(fb, 80, &_jpg_buf, &_jpg_buf_len);
+        bool jpeg_converted = frame2jpg(fb, PITDIVERS_SOFTWARE_JPEG_QUALITY, &_jpg_buf, &_jpg_buf_len);
         esp_camera_fb_return(fb);
         fb = NULL;
         if (!jpeg_converted) {
