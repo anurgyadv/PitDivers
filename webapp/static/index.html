@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>PitDivers • Rover Vision Console</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=20260827-9" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260827-10" />
     <script type="module" src="/assets/vendor/model-viewer.min.js"></script>
   </head>
   <body>
@@ -265,19 +265,6 @@
                   <span class="env-pill" id="distanceStatus"><i></i><em>Waiting</em></span>
                   <small>Click for safety detail <span aria-hidden="true">↗</span></small>
                 </div>
-                <div class="safety-gauge safety-gauge-compact" aria-hidden="true">
-                  <svg viewBox="0 0 400 225">
-                    <path class="gauge-track" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
-                    <path class="gauge-zone zone-stop" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
-                    <path class="gauge-zone zone-caution" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
-                    <path class="gauge-zone zone-clear" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
-                    <path class="gauge-zone zone-safe" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
-                    <line class="gauge-needle" id="distanceNeedle" x1="200" y1="190" x2="200" y2="68"/>
-                    <circle class="gauge-hub" cx="200" cy="190" r="9"/>
-                    <text x="32" y="218">0</text><text x="350" y="218">400+</text>
-                  </svg>
-                  <strong id="distanceZoneLabel">WAITING</strong>
-                </div>
               </div>
             </article>
 
@@ -468,21 +455,7 @@
             <span id="distanceDetailAlert" class="distance-alert"><i>!</i><em>WAITING FOR SENSOR</em></span>
             <p id="distanceDetailMessage">Connect the HC-SR04 to begin monitoring.</p>
           </div>
-          <div class="distance-gauge-wrap">
-            <div class="safety-gauge safety-gauge-detail" aria-label="Distance safety-zone gauge">
-              <svg viewBox="0 0 400 225" role="img">
-                <title>Distance safety zones</title>
-                <path class="gauge-track" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
-                <path class="gauge-zone zone-stop" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
-                <path class="gauge-zone zone-caution" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
-                <path class="gauge-zone zone-clear" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
-                <path class="gauge-zone zone-safe" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
-                <line class="gauge-needle" id="distanceDetailNeedle" x1="200" y1="190" x2="200" y2="62"/>
-                <circle class="gauge-hub" cx="200" cy="190" r="10"/>
-                <text x="31" y="218">0</text><text x="347" y="218">400+</text>
-              </svg>
-              <strong id="distanceDetailZone">WAITING</strong><span>Safety zone</span>
-            </div>
+          <div class="distance-zone-wrap">
             <div class="distance-zone-legend" aria-label="Safety zone thresholds">
               <span><i class="stop"></i><b>0–30 cm</b><small>STOP</small></span>
               <span><i class="caution"></i><b>30–70 cm</b><small>CAUTION</small></span>
@@ -497,10 +470,10 @@
             <div class="distance-chart-wrap"><canvas id="distanceDetailChart" role="img" aria-label="Distance history over the last 30 seconds"></canvas></div>
           </article>
           <aside class="distance-stats">
-            <div class="distance-stat"><span class="stat-symbol approach">↗</span><div><small>Approach rate</small><strong id="distanceApproachRate">—</strong><em id="distanceApproachNote">Waiting</em></div></div>
-            <div class="distance-stat"><span class="stat-symbol nearest">⌄</span><div><small>Nearest (30s)</small><strong id="distanceNearest">—</strong><em>Minimum distance</em></div></div>
-            <div class="distance-stat"><span class="stat-symbol average">◷</span><div><small>Average (30s)</small><strong id="distanceAverage">—</strong><em>Average distance</em></div></div>
-            <div class="distance-stat"><span class="stat-symbol quality">⌁</span><div><small>Signal quality</small><strong id="distanceQuality">Waiting</strong><em id="distanceQualityNote">No samples</em></div></div>
+            <div class="distance-stat"><div><small>Approach rate</small><strong id="distanceApproachRate">—</strong><em id="distanceApproachNote">Waiting</em></div></div>
+            <div class="distance-stat"><div><small>Nearest (30s)</small><strong id="distanceNearest">—</strong><em>Minimum distance</em></div></div>
+            <div class="distance-stat"><div><small>Average (30s)</small><strong id="distanceAverage">—</strong><em>Average distance</em></div></div>
+            <div class="distance-stat"><div><small>Signal quality</small><strong id="distanceQuality">Waiting</strong><em id="distanceQualityNote">No samples</em></div></div>
           </aside>
         </section>
         <footer class="distance-specs">

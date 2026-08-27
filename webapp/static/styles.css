@@ -276,7 +276,7 @@ select { cursor: pointer; }
 .imu-temperature { min-height: 35px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }.imu-temperature strong { color: #3edaf3; font-size: 14px; font-variant-numeric: tabular-nums; }
 
 /* Clickable ultrasonic safety hero */
-.distance-card { min-height: 252px; padding-bottom: 16px; cursor: pointer; isolation: isolate; transition: border-color .18s, transform .18s, box-shadow .18s; }
+.distance-card { min-height: 228px; padding-bottom: 16px; cursor: pointer; isolation: isolate; transition: border-color .18s, transform .18s, box-shadow .18s; }
 .distance-card:hover { transform: translateY(-2px); border-color: color-mix(in srgb, var(--yellow) 48%, var(--line)); box-shadow: 0 20px 54px rgba(0,0,0,.34), 0 0 30px rgba(255,198,90,.06); }
 .distance-card:focus-visible { outline: 2px solid var(--yellow); outline-offset: 3px; }
 .distance-card .env-head { justify-content: flex-start; }
@@ -284,32 +284,13 @@ select { cursor: pointer; }
 .distance-sensor-name { display: block; margin-top: 3px; color: var(--faint); font-size: 9px; }
 .distance-live { display: inline-flex; align-items: center; gap: 7px; color: var(--green); font-size: 10px; font-weight: 800; letter-spacing: .11em; }
 .distance-live i { width: 8px; height: 8px; border-radius: 50%; background: currentColor; box-shadow: 0 0 10px currentColor; }
-.distance-card-body { position: relative; z-index: 1; min-height: 178px; display: grid; grid-template-columns: minmax(0, 1fr) minmax(120px, .9fr); align-items: center; gap: 14px; }
+.distance-card-body { position: relative; z-index: 1; min-height: 158px; display: grid; grid-template-columns: 1fr; align-items: center; }
 .distance-card-reading { min-width: 0; align-self: center; }
 .distance-card-reading .env-value { margin-top: 8px; font-size: clamp(40px, 4vw, 58px); white-space: nowrap; }
 .distance-card-reading .env-unit { font-size: .42em; }
 .distance-card-reading .env-pill { margin-top: 11px; padding-inline: 10px; font-size: 11px; white-space: nowrap; }
 .distance-card-reading > small { display: block; margin-top: 15px; color: var(--faint); font-size: 9px; }
 .distance-card-reading > small span { color: var(--yellow); }
-
-.safety-gauge { position: relative; min-width: 0; color: var(--muted); }
-.safety-gauge svg { display: block; width: 100%; overflow: visible; }
-.safety-gauge path { fill: none; }
-.safety-gauge .gauge-track { stroke: #222b33; stroke-width: 40; }
-.safety-gauge .gauge-zone { stroke-width: 34; stroke-dasharray: 23.2 76.8; }
-.safety-gauge .zone-stop { stroke: #f0444e; stroke-dashoffset: 0; }
-.safety-gauge .zone-caution { stroke: #eeb326; stroke-dashoffset: -25; }
-.safety-gauge .zone-clear { stroke: #51c449; stroke-dashoffset: -50; }
-.safety-gauge .zone-safe { stroke: #22a95a; stroke-dashoffset: -75; }
-.safety-gauge text { fill: var(--muted); font: 700 18px Inter, ui-sans-serif, system-ui, sans-serif; }
-.gauge-needle { stroke: #f5f7f9; stroke-width: 7; stroke-linecap: round; filter: drop-shadow(0 2px 3px #000); transition: transform .55s cubic-bezier(.2,.75,.25,1); }
-.gauge-hub { fill: #f5f7f9; stroke: #11171d; stroke-width: 6; }
-.safety-gauge-compact { width: min(100%, 180px); margin: 0; justify-self: end; overflow: hidden; }
-.safety-gauge-compact svg { overflow: hidden; }
-.safety-gauge-compact .gauge-track { stroke-width: 32; }
-.safety-gauge-compact .gauge-zone { stroke-width: 26; }
-.safety-gauge-compact .gauge-needle { stroke-width: 5; }
-.safety-gauge-compact strong { display: none; }
 
 /* Expanded distance dashboard */
 .distance-modal { width: min(1360px, calc(100vw - 24px)); max-height: calc(100vh - 20px); background: #080d12; border-color: #2d3943; }
@@ -320,19 +301,15 @@ select { cursor: pointer; }
 .distance-title small { color: var(--muted); font-size: 10px; }
 .distance-dialog-actions { display: flex; align-items: center; gap: 16px; }
 .distance-dashboard { max-height: calc(100vh - 82px); padding: 12px; overflow: auto; background-image: linear-gradient(rgba(255,255,255,.014) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.012) 1px, transparent 1px); background-size: 42px 42px; }
-.distance-overview { display: grid; grid-template-columns: minmax(250px, .62fr) minmax(420px, 1.38fr); gap: 16px; padding: 13px 17px; border: 1px solid var(--line); border-radius: 12px; background: radial-gradient(circle at 70% 10%, rgba(255,198,90,.06), transparent 42%), rgba(10,16,22,.93); }
+.distance-overview { display: grid; grid-template-columns: minmax(250px, .62fr) minmax(420px, 1.38fr); gap: 18px; padding: 12px 17px; border: 1px solid var(--line); border-radius: 12px; background: radial-gradient(circle at 70% 10%, rgba(255,198,90,.06), transparent 42%), rgba(10,16,22,.93); }
 .distance-primary-reading { display: flex; flex-direction: column; align-items: flex-start; justify-content: center; }
-.distance-primary-reading > strong { font-size: clamp(52px, 6vw, 80px); font-weight: 800; line-height: .95; letter-spacing: -.04em; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.distance-primary-reading > strong { font-size: clamp(48px, 5vw, 68px); font-weight: 800; line-height: .95; letter-spacing: -.04em; font-variant-numeric: tabular-nums; white-space: nowrap; }
 .distance-primary-reading > strong span { margin-left: 8px; color: var(--muted); font-size: .34em; letter-spacing: 0; }
 .distance-alert { max-width: 100%; margin-top: 12px; display: inline-flex; align-items: center; gap: 8px; padding: 7px 11px; border-radius: 7px; color: var(--muted); background: rgba(137,150,163,.1); font-size: 12px; font-weight: 750; letter-spacing: .025em; }
 .distance-alert i { width: 22px; height: 22px; display: grid; place-items: center; border-radius: 6px; color: inherit; background: color-mix(in srgb, currentColor 22%, transparent); font-style: normal; font-size: 13px; }
 .distance-alert em { overflow: hidden; font-style: normal; text-overflow: ellipsis; white-space: nowrap; }
 .distance-primary-reading p { max-width: 330px; margin: 10px 0 0; color: var(--muted); font-size: 11px; line-height: 1.45; }
-.distance-gauge-wrap { min-width: 0; display: grid; align-items: center; }
-.safety-gauge-detail { width: min(100%, 460px); margin: 0 auto; }
-.safety-gauge-detail svg { max-height: 172px; }
-.safety-gauge-detail > strong { position: absolute; left: 50%; bottom: 14%; transform: translateX(-50%); font-size: 18px; letter-spacing: .08em; }
-.safety-gauge-detail > span { position: absolute; left: 50%; bottom: 5%; transform: translateX(-50%); color: var(--muted); font-size: 9px; white-space: nowrap; }
+.distance-zone-wrap { min-width: 0; display: grid; align-items: center; }
 .distance-zone-legend { display: grid; grid-template-columns: repeat(4, 1fr); margin-top: 0; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; background: rgba(6,10,14,.58); }
 .distance-zone-legend > span { min-width: 0; padding: 6px 7px; display: grid; grid-template-columns: auto 1fr; column-gap: 6px; align-items: center; border-right: 1px solid var(--line-soft); }
 .distance-zone-legend > span:last-child { border-right: 0; }
@@ -348,13 +325,11 @@ select { cursor: pointer; }
 .distance-chart-wrap { height: 176px; padding: 7px 9px 3px; }
 .distance-chart-wrap canvas { display: block; width: 100%; height: 100%; }
 .distance-stats { display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; padding: 0; }
-.distance-stat { min-height: 82px; padding: 8px 11px; display: grid; grid-template-columns: 36px 1fr; align-items: center; gap: 9px; border-bottom: 1px solid var(--line-soft); }
+.distance-stat { min-height: 72px; padding: 10px 14px; display: grid; align-items: center; border-bottom: 1px solid var(--line-soft); }
 .distance-stat:nth-child(odd) { border-right: 1px solid var(--line-soft); }
 .distance-stat:nth-child(n+3) { border-bottom: 0; }
-.stat-symbol { width: 34px; height: 34px; display: grid; place-items: center; border: 1px solid currentColor; border-radius: 8px; background: color-mix(in srgb, currentColor 8%, transparent); font-size: 18px; }
-.stat-symbol.approach { color: #a878ff; }.stat-symbol.nearest { color: #45a7ff; }.stat-symbol.average { color: #8bd957; }.stat-symbol.quality { color: #3edaf3; }
 .distance-stat div { min-width: 0; display: grid; grid-template-columns: 1fr auto; column-gap: 8px; align-items: baseline; }
-.distance-stat small { color: var(--muted); font-size: 9px; }
+.distance-stat small { color: var(--muted); font-size: 10px; }
 .distance-stat strong { grid-row: span 2; font-size: 16px; color: var(--yellow); white-space: nowrap; font-variant-numeric: tabular-nums; }
 .distance-stat em { color: var(--faint); font-size: 9px; font-style: normal; }
 .distance-specs { min-height: 48px; margin-top: 12px; padding: 5px 4px; display: grid; grid-template-columns: repeat(4, 1fr); border: 1px solid var(--line); border-radius: 12px; background: rgba(10,16,22,.94); }
@@ -564,7 +539,7 @@ model-viewer { width: 100%; height: 100%; background: radial-gradient(circle at 
   .record-controls .button { grid-column: 1 / -1; }
   .photo-grid { grid-template-columns: repeat(2, 1fr); }
   .viewer-actions .button { display: none; }
-  .distance-card-body { grid-template-columns: minmax(0, 1fr) minmax(120px, .9fr); }
+  .distance-card-body { grid-template-columns: 1fr; }
   .distance-modal { width: calc(100vw - 12px); max-height: calc(100vh - 12px); }
   .distance-modal-header { min-height: 68px; padding-inline: 12px; }
   .distance-title .env-badge, .distance-title small, .distance-modal-header .distance-live { display: none; }
