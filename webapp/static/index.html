@@ -112,43 +112,66 @@
               </div>
               <div class="stream-frame" id="depthFrameWrap">
                 <img id="depthStream" alt="Depth Anything 3 live depth output" />
+                <div class="depth-legend" aria-hidden="true">
+                  <span class="depth-legend-title" id="depthLegendTitle">RELATIVE DEPTH</span>
+                  <div class="depth-legend-body">
+                    <div class="depth-legend-bar"></div>
+                    <ul class="depth-legend-ticks"><li>NEAR</li><li>MID</li><li>FAR</li></ul>
+                  </div>
+                </div>
                 <div class="empty-stream"><span>◇</span><strong>Depth idle</strong><small>The model loads after the stream connects</small></div>
               </div>
             </article>
           </div>
+
+          <div class="depth-stats-grid">
+            <div class="metric panel"><span>MIN DEPTH</span><strong id="depthMin" class="near">—</strong><small>Nearest · relative</small></div>
+            <div class="metric panel"><span>AVG DEPTH</span><strong id="depthAvg">—</strong><small>Mean · relative</small></div>
+            <div class="metric panel"><span>MAX DEPTH</span><strong id="depthMax" class="far">—</strong><small>Farthest · relative</small></div>
+            <div class="metric panel"><span>CONFIDENCE</span><strong id="depthConfidence">—</strong><small id="depthConfidenceNote">DA3 relative confidence</small></div>
+          </div>
+
+          <section class="filmstrip panel" id="filmstrip" hidden aria-label="Captured keyframes">
+            <div class="filmstrip-head">
+              <div><p class="eyebrow">RECORDING</p><h2>Captured keyframes</h2></div>
+              <span class="pill" id="filmstripCount">0 frames</span>
+            </div>
+            <div class="filmstrip-track" id="filmstripTrack" tabindex="0"></div>
+          </section>
 
           <div class="metrics-grid">
             <div class="metric panel"><span>CAMERA FPS</span><strong id="cameraFps">—</strong><small>Incoming MJPEG</small></div>
             <div class="metric panel"><span>DA3 FPS</span><strong id="depthFps">—</strong><small>Processed frames</small></div>
             <div class="metric panel"><span>INFERENCE</span><strong id="inferenceTime">—</strong><small>Per depth frame</small></div>
             <div class="metric panel"><span>KEYFRAMES</span><strong id="framesSaved">0</strong><small id="recordingSession">Not recording</small></div>
-            <div class="metric panel"><span>TEMPERATURE</span><strong id="temperatureValue">—</strong><small id="sensorPinLabel">DHT11 · sensor GPIO</small></div>
-            <div class="metric panel"><span>HUMIDITY</span><strong id="humidityValue">—</strong><small id="sensorStatus">Sensor offline</small></div>
           </div>
 
-          <div class="sensor-chart-grid">
-            <article class="sensor-chart panel">
-              <div class="chart-heading">
-                <div><p class="eyebrow">ENVIRONMENT</p><h2>Temperature history</h2></div>
-                <small id="temperatureRange">Waiting for data</small>
+          <div class="env-grid">
+            <article class="env-card panel" data-env="temperature" style="--env:#ff7433;">
+              <button class="env-menu" type="button" data-pop-chart="temperature" title="Pop out temperature graph" aria-label="Pop out temperature graph"><span></span><span></span><span></span></button>
+              <span class="env-watermark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/></svg></span>
+              <div class="env-head">
+                <span class="env-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/></svg></span>
+                <p class="env-label">TEMPERATURE</p>
               </div>
-              <div class="chart-canvas-wrap">
-                <canvas id="temperatureChart" role="img" aria-label="Live DHT11 temperature graph"></canvas>
-              </div>
-              <div class="chart-foot"><span>Rolling 10-minute window</span><span>°C</span></div>
+              <strong class="env-value" id="temperatureValue">—</strong>
+              <span class="env-pill" id="temperatureStatus"><i></i><em>Waiting</em></span>
+              <div class="env-chart"><canvas id="temperatureSpark" role="img" aria-label="Temperature history graph"></canvas></div>
             </article>
 
-            <article class="sensor-chart panel">
-              <div class="chart-heading">
-                <div><p class="eyebrow cyan">ENVIRONMENT</p><h2>Humidity history</h2></div>
-                <small id="humidityRange">Waiting for data</small>
+            <article class="env-card panel" data-env="humidity" style="--env:#29d3c2;">
+              <button class="env-menu" type="button" data-pop-chart="humidity" title="Pop out humidity graph" aria-label="Pop out humidity graph"><span></span><span></span><span></span></button>
+              <span class="env-watermark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3s-7 7.5-7 12a7 7 0 0 0 14 0c0-4.5-7-12-7-12Z"/></svg></span>
+              <div class="env-head">
+                <span class="env-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s-7 7.5-7 12a7 7 0 0 0 14 0c0-4.5-7-12-7-12Z"/></svg></span>
+                <p class="env-label">HUMIDITY</p>
               </div>
-              <div class="chart-canvas-wrap">
-                <canvas id="humidityChart" role="img" aria-label="Live DHT11 humidity graph"></canvas>
-              </div>
-              <div class="chart-foot"><span>Rolling 10-minute window</span><span>% RH</span></div>
+              <strong class="env-value" id="humidityValue">—</strong>
+              <span class="env-pill" id="humidityStatus"><i></i><em>Waiting</em></span>
+              <div class="env-chart"><canvas id="humiditySpark" role="img" aria-label="Humidity history graph"></canvas></div>
             </article>
           </div>
+
         </section>
 
         <section class="page" id="page-captures">
@@ -225,13 +248,57 @@
           <label for="reconstructRes">Processing resolution</label>
           <select id="reconstructRes">
             <option value="392">392 · Lower memory</option>
-            <option value="504" selected>504 · Recommended</option>
-            <option value="672">672 · Higher detail / memory</option>
+            <option value="504">504 · Balanced</option>
+            <option value="672" selected>672 · Recommended detail</option>
+            <option value="840">840 · High detail / memory</option>
+            <option value="1008">1008 · Max detail (offline)</option>
           </select>
+          <small>Higher is sharper per view but uses more GPU memory. Offline runs can go higher than live.</small>
+        </div>
+        <div class="field">
+          <label for="reconstructConf">Confidence filter</label>
+          <select id="reconstructConf">
+            <option value="40">40 · Densest (keeps noise)</option>
+            <option value="55" selected>55 · Recommended clean-up</option>
+            <option value="65">65 · Cleaner</option>
+            <option value="70">70 · Aggressive (may thin walls)</option>
+          </select>
+          <small>Drops low-confidence floating / noise points. The biggest single clean-up lever.</small>
+        </div>
+        <div class="field">
+          <label for="reconstructPoints">Point budget</label>
+          <select id="reconstructPoints">
+            <option value="1000000" selected>1.0M · Standard</option>
+            <option value="2000000">2.0M · Denser</option>
+            <option value="4000000">4.0M · Very dense (large file)</option>
+          </select>
+          <small>Raise alongside resolution for a denser cloud; increases the GLB file size.</small>
+        </div>
+        <div class="field">
+          <label for="reconstructCameras">Camera wireframes</label>
+          <select id="reconstructCameras">
+            <option value="false" selected>Hide · cleaner scene</option>
+            <option value="true">Show · debug camera poses</option>
+          </select>
+          <small>Hiding removes the camera pyramids that clutter the exported model.</small>
         </div>
         <div class="warning-box">Live mode must be disconnected while reconstruction runs. This prevents two DA3 processes competing for GPU memory.</div>
         <button class="button primary full" type="submit">Start reconstruction</button>
       </form>
+    </dialog>
+
+    <dialog id="chartDialog" class="modal chart-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow" id="chartDialogEyebrow">ENVIRONMENT</p><h2 id="chartDialogTitle">History</h2></div>
+        <div class="chart-dialog-actions">
+          <small id="chartDialogRange">Waiting for data</small>
+          <button class="icon-button modal-close" aria-label="Close">×</button>
+        </div>
+      </div>
+      <div class="chart-canvas-wrap chart-dialog-canvas">
+        <canvas id="chartDialogCanvas" role="img" aria-label="Sensor history graph"></canvas>
+      </div>
+      <div class="chart-foot"><span>Rolling 1-hour window</span><span id="chartDialogUnit">°C</span></div>
     </dialog>
 
     <div class="lightbox" id="lightbox" hidden>

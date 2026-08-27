@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any, Iterator
 
 import cv2
+import numpy as np
 
 
 ROOT_DIR = Path(__file__).resolve().parents[1]
@@ -113,6 +114,38 @@ def folder_size(folder: Path) -> int:
         return 0
 
 
+def depth_stats(
+    depth: np.ndarray, conf: np.ndarray | None, is_metric: bool
+) -> dict[str, Any] | None:
+    """Summarise a DA3 depth map for the live readout.
+
+    DA3-Base is not metric, so its depth is *relative* (up to scale), not metres.
+    We surface robust min/avg/max plus a relative confidence score derived from
+    the model's own per-pixel confidence, and flag whether the source model
+    actually produced metric depth so the UI can label the scale honestly.
+    """
+    finite_positive = np.isfinite(depth) & (depth > 0)
+    valid = depth[finite_positive]
+    if valid.size < 16:
+        return None
+    stats: dict[str, Any] = {
+        "min": float(np.percentile(valid, 2)),
+        "avg": float(valid.mean()),
+        "max": float(np.percentile(valid, 98)),
+        "metric": bool(is_metric),
+    }
+    if conf is not None and conf.shape == depth.shape:
+        conf_valid = conf[finite_positive]
+        conf_valid = conf_valid[np.isfinite(conf_valid)]
+        if conf_valid.size:
+            median = float(np.median(conf_valid))
+            high = float(np.percentile(conf_valid, 95))
+            # Median confidence relative to the frame's high-confidence pixels.
+            # DA3 confidence is uncalibrated, so this is a relative 0–1 score.
+            stats["confidence"] = max(0.0, min(1.0, median / high)) if high > 0 else 0.0
+    return stats
+
+
 class LivePipeline:
     """Own the ESP32 capture, live DA3 inference, and keyframe recording."""
 
@@ -145,6 +178,7 @@ class LivePipeline:
         self._capture_fps = 0.0
         self._depth_fps = 0.0
         self._last_inference_ms = 0.0
+        self._depth_stats: dict[str, Any] | None = None
 
         self._recording = False
         self._recording_name: str | None = None
@@ -175,6 +209,7 @@ class LivePipeline:
             self._capture_fps = 0.0
             self._depth_fps = 0.0
             self._last_inference_ms = 0.0
+            self._depth_stats = None
             self._frame_width = 0
             self._frame_height = 0
             self._stop_event = threading.Event()
@@ -211,6 +246,7 @@ class LivePipeline:
             self._capture = None
             self._capture_thread = None
             self._inference_thread = None
+            self._depth_stats = None
             self.state = "disconnected"
             self.model_state = "idle"
             self.connected_at = None
@@ -332,6 +368,11 @@ class LivePipeline:
                 )
                 depth_rgb = visualize_depth(prediction.depth[0])
                 depth_bgr = cv2.cvtColor(depth_rgb, cv2.COLOR_RGB2BGR)
+                stats = depth_stats(
+                    prediction.depth[0],
+                    prediction.conf[0] if getattr(prediction, "conf", None) is not None else None,
+                    getattr(prediction, "is_metric", 0),
+                )
                 encoded_ok, encoded = cv2.imencode(
                     ".jpg", depth_bgr, [int(cv2.IMWRITE_JPEG_QUALITY), 90]
                 )
@@ -342,6 +383,7 @@ class LivePipeline:
                     with self._lock:
                         self._depth_jpeg = encoded.tobytes()
                         self._depth_sequence += 1
+                        self._depth_stats = stats
                         self._last_inference_ms = duration * 1000.0
                         if fps_elapsed >= 1.0:
                             self._depth_fps = inference_counter / fps_elapsed
@@ -438,6 +480,7 @@ class LivePipeline:
                 "capture_fps": round(self._capture_fps, 1),
                 "depth_fps": round(self._depth_fps, 1),
                 "inference_ms": round(self._last_inference_ms),
+                "depth_stats": self._depth_stats,
                 "width": self._frame_width,
                 "height": self._frame_height,
                 "recording": self._recording,
@@ -537,7 +580,15 @@ class ReconstructionJobs:
         self._active_job: str | None = None
         self._process: subprocess.Popen[str] | None = None
 
-    def start(self, capture_name: str, model_id: str, process_res: int) -> dict[str, Any]:
+    def start(
+        self,
+        capture_name: str,
+        model_id: str,
+        process_res: int,
+        conf_thresh_percentile: float = 55.0,
+        num_max_points: int = 1_000_000,
+        show_cameras: bool = False,
+    ) -> dict[str, Any]:
         if model_id not in MODEL_IDS:
             raise ValueError("Unknown model")
         capture_dir = path_in(DATA_DIR, capture_name)
@@ -565,6 +616,9 @@ class ReconstructionJobs:
                 "run_name": run_name,
                 "model_id": model_id,
                 "process_res": process_res,
+                "conf_thresh_percentile": conf_thresh_percentile,
+                "num_max_points": num_max_points,
+                "show_cameras": show_cameras,
                 "images": count,
                 "progress": 0,
                 "stage": "Queued",
@@ -602,6 +656,14 @@ class ReconstructionJobs:
             str(run_dir),
             "--process-res",
             str(job["process_res"]),
+            # Quality levers exposed in the reconstruct dialog. A higher
+            # confidence percentile drops low-confidence floating/noise points;
+            # hiding camera wireframes declutters the exported scene.
+            "--conf-thresh-percentile",
+            str(job["conf_thresh_percentile"]),
+            "--num-max-points",
+            str(job["num_max_points"]),
+            "--show-cameras" if job["show_cameras"] else "--no-show-cameras",
         ]
         env = os.environ.copy()
         env["PYTHONUNBUFFERED"] = "1"

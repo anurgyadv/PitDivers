@@ -36,6 +36,10 @@ python -m webapp
    Graph history is kept in the browser for the current dashboard session.
 2. Enter a capture name and press **Start recording**. The original stream
    frames are saved under `data/<capture-name>` at the selected keyframe rate.
+   While recording, a **Captured keyframes** filmstrip appears directly below
+   the streams and slides in each new frame as it is saved. It scrolls
+   horizontally; drag or scroll back to inspect earlier frames (auto-scroll
+   pauses while you do), and click any frame to open it full size.
 3. Stop recording, open **Captures**, review the photos, then choose
    **Build 3D**.
 4. The dashboard disconnects live mode before reconstruction to avoid two DA3
@@ -43,8 +47,45 @@ python -m webapp
    **3D Models**.
 5. Open the finished scene in the integrated viewer or download its GLB file.
 
+The **Temperature** and **Humidity** readings render as large environment cards
+with the live value, a status pill (e.g. Normal / Moderate), and a graph of the
+DHT11 history drawn right inside the card. Use each card's ⋮ menu to pop the full
+graph out in a larger window. The graph plots a window that grows with elapsed
+time up to a rolling one hour: the newest reading rides the right edge (NOW) and
+history fills to the left, so the line always spans the full width.
+
 Only one reconstruction runs at a time. The **Stop** button terminates its DA3
 subprocess if a run is too large or stalls.
+
+### Live depth readout
+
+The depth panel shows a colour legend and a MIN / AVG / MAX / CONFIDENCE strip.
+
+**These values are relative, not metres.** DA3-Base (and the other DA3 models in
+the catalogue) output *up-to-scale* depth — the model reports the confidence flag
+`is_metric = 0`, so there is no real-world scale. The readout therefore labels the
+depth values `rel` and the legend "RELATIVE DEPTH" (NEAR → FAR), and the
+confidence figure is the model's own uncalibrated per-pixel confidence expressed
+as a relative 0–100% score. True metric depth would require a metric DA3 variant
+(e.g. `da3metric-large`), which is not part of the current model catalogue; when
+such a model is used the readout automatically switches to metres.
+
+### Reconstruction quality controls
+
+The **Build 3D** dialog exposes the DA3 export quality levers so you can trade
+cleanliness, detail, and GPU memory per run:
+
+- **Processing resolution** — sharper depth per view at higher memory cost.
+  Offline runs can go up to 1008 (live is capped lower for latency).
+- **Confidence filter** — higher percentiles drop low-confidence floating and
+  noise points. This is the single biggest clean-up lever; 55 is the default.
+- **Point budget** — raise alongside resolution for a denser cloud (larger GLB).
+- **Camera wireframes** — hidden by default so the exported scene isn't
+  cluttered by camera-pose pyramids.
+
+If a result still looks fuzzy, the dominant factor is input image quality, not
+these settings — see [`docs/RECONSTRUCTION_QUALITY.md`](../docs/RECONSTRUCTION_QUALITY.md)
+for the full roadmap (firmware still-capture, capture geometry, and meshing).
 
 ## Models
 
