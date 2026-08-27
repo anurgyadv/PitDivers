@@ -101,11 +101,24 @@
             <article class="stream-card panel">
               <div class="card-heading">
                 <div><p class="eyebrow">CAMERA 01</p><h2>Live stream</h2></div>
-                <span class="pill" id="cameraResolution">No signal</span>
+                <div class="camera-heading-actions">
+                  <button class="motion-action" type="button" id="cameraOverlayToggle" aria-pressed="false" title="Show a minimal attitude overlay over the camera">Attitude overlay</button>
+                  <span class="pill" id="cameraResolution">No signal</span>
+                </div>
               </div>
               <div class="stream-frame" id="rawFrameWrap">
                 <img id="rawStream" alt="ESP32 live camera stream" />
                 <div class="empty-stream"><span>◉</span><strong>Camera offline</strong><small>Connect the ESP32 stream to begin</small></div>
+                <div class="camera-attitude-overlay" id="cameraAttitudeOverlay" hidden aria-hidden="true">
+                  <div class="camera-overlay-world" id="cameraOverlayWorld"><i></i></div>
+                  <div class="camera-overlay-reticle"><span></span><b></b><span></span></div>
+                  <div class="camera-overlay-readout">
+                    <span>R <b id="cameraOverlayRoll">—</b></span>
+                    <span>P <b id="cameraOverlayPitch">—</b></span>
+                    <span>HDG <b id="cameraOverlayHeading">—</b></span>
+                  </div>
+                  <div class="camera-overlay-state" id="cameraOverlayState"><i></i><span>MPU waiting</span></div>
+                </div>
               </div>
             </article>
 
@@ -154,6 +167,10 @@
               <div class="env-head imu-head">
                 <span class="env-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="9" ry="4"/><ellipse cx="12" cy="12" rx="4" ry="9" transform="rotate(35 12 12)"/><path d="m17.5 7.5 1-3M17.5 7.5l3-1"/></svg></span>
                 <div><p class="env-label">MOTION COMMAND</p><small class="distance-sensor-name">MPU6050 · live attitude and terrain dynamics</small></div>
+                <div class="imu-head-actions">
+                  <button class="motion-action" type="button" id="zeroYawButton" title="Use the current rover direction as 0 degrees">Zero yaw</button>
+                  <button class="motion-action accent" type="button" id="openRoverViewer">3D rover</button>
+                </div>
                 <label class="tilt-limit-control" for="tiltLimit">
                   <span>ROLLOVER LIMIT</span>
                   <input id="tiltLimit" type="range" min="15" max="45" step="1" value="30" />
@@ -179,7 +196,7 @@
                   <div class="imu-orientation" aria-label="Rover orientation angles">
                     <div><span>ROLL</span><strong id="imuRoll">—</strong></div>
                     <div><span>PITCH</span><strong id="imuPitch">—</strong></div>
-                    <div><span>YAW</span><strong id="imuYaw">—</strong></div>
+                    <div><span>YAW · REL</span><strong id="imuYaw">—</strong></div>
                   </div>
                 </section>
 
@@ -300,6 +317,27 @@
         </section>
       </main>
     </div>
+
+    <dialog id="roverDialog" class="modal rover-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow">MPU6050 ATTITUDE</p><h2>Live 3D rover</h2></div>
+        <div class="rover-modal-actions">
+          <button class="motion-action" type="button" id="roverZeroYaw">Zero yaw</button>
+          <button class="icon-button modal-close" aria-label="Close">×</button>
+        </div>
+      </div>
+      <div class="rover-stage">
+        <canvas id="roverCanvas" role="img" aria-label="Live 3D rover orientation"></canvas>
+        <div class="rover-axis-key" aria-hidden="true"><span class="axis-x">X</span><span class="axis-y">Y</span><span class="axis-z">Z</span></div>
+        <div class="rover-waiting" id="roverWaiting">Waiting for MPU6050 data</div>
+      </div>
+      <div class="rover-readouts">
+        <div><span>ROLL</span><strong id="roverRoll">—</strong></div>
+        <div><span>PITCH</span><strong id="roverPitch">—</strong></div>
+        <div><span>RELATIVE YAW</span><strong id="roverYaw">—</strong></div>
+        <p>Yaw is relative and wrapped to ±180°. Zero it whenever the rover is pointed in your chosen reference direction.</p>
+      </div>
+    </dialog>
 
     <dialog id="photoDialog" class="modal photo-modal">
       <div class="modal-header">
@@ -478,6 +516,6 @@
     </div>
 
     <div class="toast-stack" id="toastStack"></div>
-    <script src="/assets/app.js?v=20260827-5"></script>
+    <script src="/assets/app.js?v=20260827-6"></script>
   </body>
 </html>
