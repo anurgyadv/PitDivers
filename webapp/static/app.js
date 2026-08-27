@@ -104,8 +104,10 @@ async function refreshHealth() {
   try {
     const health = await api("/api/health");
     $("#systemDot").className = `status-dot ${health.ok ? "online" : "error"}`;
-    $("#gpuName").textContent = health.gpu || "GPU unavailable";
-    $("#systemStatus").textContent = health.cuda ? "CUDA ready • Local processing" : "CUDA unavailable";
+    $("#gpuName").textContent = health.gpu || "CPU (no GPU detected)";
+    $("#systemStatus").textContent = health.cuda
+      ? "CUDA ready • Local processing"
+      : "CPU mode • Local processing (slower)";
   } catch (error) {
     $("#systemDot").className = "status-dot error";
     $("#gpuName").textContent = "Service unavailable";

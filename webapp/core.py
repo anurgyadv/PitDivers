@@ -354,10 +354,13 @@ class LivePipeline:
             from depth_anything_3.api import DepthAnything3
             from depth_anything_3.utils.visualize import visualize_depth
 
-            if not torch.cuda.is_available():
-                raise RuntimeError("CUDA is unavailable. Live DA3 requires the NVIDIA GPU.")
+            # Prefer the GPU when present, but fall back to CPU so the live
+            # depth view still works on laptops without an NVIDIA GPU. CPU
+            # inference is much slower (seconds per frame), so pick a small
+            # model and a low process-res for a usable preview.
+            device = "cuda" if torch.cuda.is_available() else "cpu"
 
-            model = DepthAnything3.from_pretrained(self.model_id).to("cuda").eval()
+            model = DepthAnything3.from_pretrained(self.model_id).to(device).eval()
             if self._stop_event.is_set() or generation != self._generation:
                 del model
                 torch.cuda.empty_cache()
