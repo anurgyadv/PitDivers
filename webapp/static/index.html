@@ -112,9 +112,23 @@
               </div>
               <div class="stream-frame" id="depthFrameWrap">
                 <img id="depthStream" alt="Depth Anything 3 live depth output" />
+                <div class="depth-legend" aria-hidden="true">
+                  <span class="depth-legend-title" id="depthLegendTitle">RELATIVE DEPTH</span>
+                  <div class="depth-legend-body">
+                    <div class="depth-legend-bar"></div>
+                    <ul class="depth-legend-ticks"><li>NEAR</li><li>MID</li><li>FAR</li></ul>
+                  </div>
+                </div>
                 <div class="empty-stream"><span>◇</span><strong>Depth idle</strong><small>The model loads after the stream connects</small></div>
               </div>
             </article>
+          </div>
+
+          <div class="depth-stats-grid">
+            <div class="metric panel"><span>MIN DEPTH</span><strong id="depthMin" class="near">—</strong><small>Nearest · relative</small></div>
+            <div class="metric panel"><span>AVG DEPTH</span><strong id="depthAvg">—</strong><small>Mean · relative</small></div>
+            <div class="metric panel"><span>MAX DEPTH</span><strong id="depthMax" class="far">—</strong><small>Farthest · relative</small></div>
+            <div class="metric panel"><span>CONFIDENCE</span><strong id="depthConfidence">—</strong><small id="depthConfidenceNote">DA3 relative confidence</small></div>
           </div>
 
           <section class="filmstrip panel" id="filmstrip" hidden aria-label="Captured keyframes">

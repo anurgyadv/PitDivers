@@ -7,7 +7,8 @@ telemetry in one local dashboard.
 ## Features
 
 - ESP32-S3 MJPEG camera streaming
-- Live Depth Anything 3 depth processing on an NVIDIA GPU
+- Live Depth Anything 3 depth processing on an NVIDIA GPU, with a relative
+  depth legend and a min/avg/max + confidence readout
 - Keyframe recording with a live filmstrip of frames as they are captured, and
   photo review
 - Offline GLB 3D reconstruction with tunable quality (confidence filter,

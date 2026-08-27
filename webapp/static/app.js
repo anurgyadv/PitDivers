@@ -167,6 +167,47 @@ function renderLiveStatus() {
   $("#framesSaved").textContent = String(live.frames_saved || 0);
   $("#recordingSession").textContent = live.recording ? live.recording_name : "Not recording";
   $("#depthModelPill").textContent = modelName(live.model_id);
+  renderDepthStats(live.depth_stats);
+}
+
+function confidenceLabel(score) {
+  if (score >= 0.75) return { label: "High", tone: "#5ce09a" };
+  if (score >= 0.5) return { label: "Medium", tone: "#ffc65a" };
+  return { label: "Low", tone: "#ff5364" };
+}
+
+function renderDepthStats(stats) {
+  const min = $("#depthMin");
+  const avg = $("#depthAvg");
+  const max = $("#depthMax");
+  const conf = $("#depthConfidence");
+  if (!min || !avg || !max || !conf) return;
+
+  if (!stats) {
+    for (const el of [min, avg, max, conf]) el.textContent = "—";
+    conf.style.color = "";
+    return;
+  }
+
+  // DA3-Base is not metric, so values are shown in relative units unless a
+  // metric model reports true metres via the is_metric flag.
+  const unit = stats.metric ? "m" : "rel";
+  const digits = stats.metric ? 1 : 2;
+  const setDepth = (el, value) =>
+    (el.innerHTML = `${Number(value).toFixed(digits)}<span class="stat-unit">${unit}</span>`);
+  setDepth(min, stats.min);
+  setDepth(avg, stats.avg);
+  setDepth(max, stats.max);
+  $("#depthLegendTitle").textContent = stats.metric ? "DEPTH (m)" : "RELATIVE DEPTH";
+
+  if (typeof stats.confidence === "number") {
+    const level = confidenceLabel(stats.confidence);
+    conf.innerHTML = `${level.label}<span class="stat-unit">${Math.round(stats.confidence * 100)}%</span>`;
+    conf.style.color = level.tone;
+  } else {
+    conf.textContent = "—";
+    conf.style.color = "";
+  }
 }
 
 async function refreshLiveStatus(silent = true) {

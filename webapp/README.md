@@ -57,6 +57,19 @@ history fills to the left, so the line always spans the full width.
 Only one reconstruction runs at a time. The **Stop** button terminates its DA3
 subprocess if a run is too large or stalls.
 
+### Live depth readout
+
+The depth panel shows a colour legend and a MIN / AVG / MAX / CONFIDENCE strip.
+
+**These values are relative, not metres.** DA3-Base (and the other DA3 models in
+the catalogue) output *up-to-scale* depth — the model reports the confidence flag
+`is_metric = 0`, so there is no real-world scale. The readout therefore labels the
+depth values `rel` and the legend "RELATIVE DEPTH" (NEAR → FAR), and the
+confidence figure is the model's own uncalibrated per-pixel confidence expressed
+as a relative 0–100% score. True metric depth would require a metric DA3 variant
+(e.g. `da3metric-large`), which is not part of the current model catalogue; when
+such a model is used the readout automatically switches to metres.
+
 ### Reconstruction quality controls
 
 The **Build 3D** dialog exposes the DA3 export quality levers so you can trade
