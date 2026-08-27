@@ -12,8 +12,8 @@ telemetry in one local dashboard.
   photo review
 - Offline GLB 3D reconstruction with tunable quality (confidence filter,
   resolution, point budget) and full-screen model viewing
-- Live DHT11 temperature and humidity values with inline sparklines and
-  pop-out rolling graphs
+- Live DHT11 temperature and humidity environment cards with status pills,
+  in-card history graphs, and a pop-out full-size view
 - Combined Freenove camera + DHT11 firmware for one-device operation
 
 ## Start the dashboard

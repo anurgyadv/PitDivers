@@ -47,10 +47,12 @@ python -m webapp
    **3D Models**.
 5. Open the finished scene in the integrated viewer or download its GLB file.
 
-The **Temperature** and **Humidity** metric tiles draw a live sparkline of the
-DHT11 history right inside the tile. Hover a tile and click the ⤢ button to pop
-the full graph out in a larger window. Both graphs plot a rolling 10-minute
-window that fills from the left and scrolls rightwards as new readings arrive.
+The **Temperature** and **Humidity** readings render as large environment cards
+with the live value, a status pill (e.g. Normal / Moderate), and a graph of the
+DHT11 history drawn right inside the card. Use each card's ⋮ menu to pop the full
+graph out in a larger window. The graph plots a window that grows with elapsed
+time up to a rolling one hour: the newest reading rides the right edge (NOW) and
+history fills to the left, so the line always spans the full width.
 
 Only one reconstruction runs at a time. The **Stop** button terminates its DA3
 subprocess if a run is too large or stalls.

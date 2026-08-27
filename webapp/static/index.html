@@ -130,16 +130,32 @@
             <div class="metric panel"><span>DA3 FPS</span><strong id="depthFps">—</strong><small>Processed frames</small></div>
             <div class="metric panel"><span>INFERENCE</span><strong id="inferenceTime">—</strong><small>Per depth frame</small></div>
             <div class="metric panel"><span>KEYFRAMES</span><strong id="framesSaved">0</strong><small id="recordingSession">Not recording</small></div>
-            <div class="metric panel metric-chart">
-              <button class="metric-expand" type="button" data-pop-chart="temperature" title="Pop out temperature graph" aria-label="Pop out temperature graph">⤢</button>
-              <span>TEMPERATURE</span><strong id="temperatureValue">—</strong><small id="sensorPinLabel">DHT11 · sensor GPIO</small>
-              <canvas class="metric-spark" id="temperatureSpark" aria-hidden="true"></canvas>
-            </div>
-            <div class="metric panel metric-chart">
-              <button class="metric-expand" type="button" data-pop-chart="humidity" title="Pop out humidity graph" aria-label="Pop out humidity graph">⤢</button>
-              <span>HUMIDITY</span><strong id="humidityValue">—</strong><small id="sensorStatus">Sensor offline</small>
-              <canvas class="metric-spark" id="humiditySpark" aria-hidden="true"></canvas>
-            </div>
+          </div>
+
+          <div class="env-grid">
+            <article class="env-card panel" data-env="temperature" style="--env:#ff7433;">
+              <button class="env-menu" type="button" data-pop-chart="temperature" title="Pop out temperature graph" aria-label="Pop out temperature graph"><span></span><span></span><span></span></button>
+              <span class="env-watermark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/></svg></span>
+              <div class="env-head">
+                <span class="env-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/></svg></span>
+                <p class="env-label">TEMPERATURE</p>
+              </div>
+              <strong class="env-value" id="temperatureValue">—</strong>
+              <span class="env-pill" id="temperatureStatus"><i></i><em>Waiting</em></span>
+              <div class="env-chart"><canvas id="temperatureSpark" role="img" aria-label="Temperature history graph"></canvas></div>
+            </article>
+
+            <article class="env-card panel" data-env="humidity" style="--env:#29d3c2;">
+              <button class="env-menu" type="button" data-pop-chart="humidity" title="Pop out humidity graph" aria-label="Pop out humidity graph"><span></span><span></span><span></span></button>
+              <span class="env-watermark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 3s-7 7.5-7 12a7 7 0 0 0 14 0c0-4.5-7-12-7-12Z"/></svg></span>
+              <div class="env-head">
+                <span class="env-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3s-7 7.5-7 12a7 7 0 0 0 14 0c0-4.5-7-12-7-12Z"/></svg></span>
+                <p class="env-label">HUMIDITY</p>
+              </div>
+              <strong class="env-value" id="humidityValue">—</strong>
+              <span class="env-pill" id="humidityStatus"><i></i><em>Waiting</em></span>
+              <div class="env-chart"><canvas id="humiditySpark" role="img" aria-label="Humidity history graph"></canvas></div>
+            </article>
           </div>
 
         </section>
@@ -268,7 +284,7 @@
       <div class="chart-canvas-wrap chart-dialog-canvas">
         <canvas id="chartDialogCanvas" role="img" aria-label="Sensor history graph"></canvas>
       </div>
-      <div class="chart-foot"><span>Rolling 10-minute window</span><span id="chartDialogUnit">°C</span></div>
+      <div class="chart-foot"><span>Rolling 1-hour window</span><span id="chartDialogUnit">°C</span></div>
     </dialog>
 
     <div class="lightbox" id="lightbox" hidden>
