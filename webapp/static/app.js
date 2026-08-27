@@ -12,16 +12,13 @@ const state = {
   lastCompletedJobs: new Set(),
   filmstrip: { capture: null, count: 0 },
   openChart: null,
-<<<<<<< Updated upstream
   photoSelection: { capture: null, selected: new Set() },
   reconstructFrames: null,
   expandedLogs: new Set(),
   logPopoutJob: null,
-=======
   currentDistance: null,
   currentImu: null,
   imuImpactUntil: 0,
->>>>>>> Stashed changes
 };
 
 const SENSOR_POLL_INTERVAL_MS = 100;  // 10 Hz; matches the HC-SR04 firmware cadence
@@ -1313,13 +1310,9 @@ function bindEvents() {
     const popLogsButton = event.target.closest("[data-pop-logs]");
     const renameButton = event.target.closest("[data-rename-run]");
     const popChartButton = event.target.closest("[data-pop-chart]");
-<<<<<<< Updated upstream
     const zoomButton = event.target.closest("[data-photo-url]");
     const photoCell = event.target.closest("[data-frame]");
-=======
     const distanceCard = event.target.closest("[data-open-distance]");
-    const frameButton = event.target.closest("[data-photo-url]");
->>>>>>> Stashed changes
     if (photoButton) openPhotos(photoButton.dataset.openPhotos);
     if (reconstructButton) openReconstruct(reconstructButton.dataset.reconstruct);
     if (viewerButton) openViewer(viewerButton.dataset.viewRun);
@@ -1330,16 +1323,10 @@ function bindEvents() {
     if (popLogsButton) openLogPopout(popLogsButton.dataset.popLogs);
     if (renameButton) renameRun(renameButton.dataset.renameRun);
     if (popChartButton) openChartPopout(popChartButton.dataset.popChart);
-<<<<<<< Updated upstream
+    if (distanceCard) openDistanceDashboard();
     if (zoomButton) {
       $("#lightboxImage").src = zoomButton.dataset.photoUrl;
       $("#lightboxLabel").textContent = zoomButton.dataset.photoName;
-=======
-    if (distanceCard) openDistanceDashboard();
-    if (frameButton) {
-      $("#lightboxImage").src = frameButton.dataset.photoUrl;
-      $("#lightboxLabel").textContent = frameButton.dataset.photoName;
->>>>>>> Stashed changes
       $("#lightbox").hidden = false;
     } else if (photoCell) {
       togglePhotoFrame(photoCell.dataset.frame);
