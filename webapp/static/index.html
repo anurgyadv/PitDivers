@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>PitDivers • Rover Vision Console</title>
-    <link rel="stylesheet" href="/assets/styles.css" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260827-4" />
     <script type="module" src="/assets/vendor/model-viewer.min.js"></script>
   </head>
   <body>
@@ -70,7 +70,7 @@
             </div>
             <div class="field compact">
               <label for="inferenceFps">Depth FPS</label>
-              <input id="inferenceFps" type="number" value="5" min="1" max="30" step="1" />
+              <input id="inferenceFps" type="number" value="10" min="1" max="30" step="1" />
             </div>
             <button class="button primary" id="connectButton">Connect stream</button>
           </div>
@@ -89,6 +89,10 @@
                 <label for="keyframeFps">Save FPS</label>
                 <input id="keyframeFps" type="number" value="2" min="0.2" max="15" step="0.2" />
               </div>
+              <label class="stable-record-toggle" for="stableOnly" title="Only save a keyframe while MPU motion is below the blur threshold">
+                <input id="stableOnly" type="checkbox" />
+                <span><strong>Stable only</strong><small>MPU-gated frames</small></span>
+              </label>
               <button class="button record" id="recordButton" disabled><span></span>Start recording</button>
             </div>
           </div>
@@ -119,16 +123,15 @@
                     <ul class="depth-legend-ticks"><li>NEAR</li><li>MID</li><li>FAR</li></ul>
                   </div>
                 </div>
+                <div class="depth-telemetry" aria-label="Live depth statistics">
+                  <div><span>MIN DEPTH</span><strong id="depthMin" class="near">—</strong><small>Nearest · relative</small></div>
+                  <div><span>AVG DEPTH</span><strong id="depthAvg">—</strong><small>Mean · relative</small></div>
+                  <div><span>MAX DEPTH</span><strong id="depthMax" class="far">—</strong><small>Farthest · relative</small></div>
+                  <div><span>CONFIDENCE</span><strong id="depthConfidence">—</strong><small id="depthConfidenceNote">DA3 relative confidence</small></div>
+                </div>
                 <div class="empty-stream"><span>◇</span><strong>Depth idle</strong><small>The model loads after the stream connects</small></div>
               </div>
             </article>
-          </div>
-
-          <div class="depth-stats-grid">
-            <div class="metric panel"><span>MIN DEPTH</span><strong id="depthMin" class="near">—</strong><small>Nearest · relative</small></div>
-            <div class="metric panel"><span>AVG DEPTH</span><strong id="depthAvg">—</strong><small>Mean · relative</small></div>
-            <div class="metric panel"><span>MAX DEPTH</span><strong id="depthMax" class="far">—</strong><small>Farthest · relative</small></div>
-            <div class="metric panel"><span>CONFIDENCE</span><strong id="depthConfidence">—</strong><small id="depthConfidenceNote">DA3 relative confidence</small></div>
           </div>
 
           <section class="filmstrip panel" id="filmstrip" hidden aria-label="Captured keyframes">
@@ -147,6 +150,72 @@
           </div>
 
           <div class="env-grid">
+            <article class="env-card panel imu-card" data-env="imu" style="--env:#a878ff;">
+              <div class="env-head imu-head">
+                <span class="env-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><ellipse cx="12" cy="12" rx="9" ry="4"/><ellipse cx="12" cy="12" rx="4" ry="9" transform="rotate(35 12 12)"/><path d="m17.5 7.5 1-3M17.5 7.5l3-1"/></svg></span>
+                <div><p class="env-label">MOTION COMMAND</p><small class="distance-sensor-name">MPU6050 · live attitude and terrain dynamics</small></div>
+                <label class="tilt-limit-control" for="tiltLimit">
+                  <span>ROLLOVER LIMIT</span>
+                  <input id="tiltLimit" type="range" min="15" max="45" step="1" value="30" />
+                  <strong id="tiltLimitValue">30°</strong>
+                </label>
+                <span class="distance-live" id="imuLive"><i></i><em>WAITING</em></span>
+              </div>
+
+              <div class="imu-command-grid">
+                <section class="attitude-console" aria-label="Animated rover attitude indicator">
+                  <div class="attitude-horizon" id="attitudeHorizon">
+                    <div class="horizon-world" id="imuHorizonWorld">
+                      <div class="horizon-sky"></div>
+                      <div class="horizon-ground"></div>
+                      <div class="horizon-zero"></div>
+                      <i class="pitch-mark pitch-up-20">+20</i><i class="pitch-mark pitch-up-10">+10</i>
+                      <i class="pitch-mark pitch-down-10">−10</i><i class="pitch-mark pitch-down-20">−20</i>
+                    </div>
+                    <div class="horizon-roll-scale" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i></div>
+                    <div class="rover-reticle" id="imuRover"><span></span><b></b><span></span></div>
+                    <div class="horizon-heading"><span>HDG</span><strong id="imuHeading">—</strong></div>
+                  </div>
+                  <div class="imu-orientation" aria-label="Rover orientation angles">
+                    <div><span>ROLL</span><strong id="imuRoll">—</strong></div>
+                    <div><span>PITCH</span><strong id="imuPitch">—</strong></div>
+                    <div><span>YAW</span><strong id="imuYaw">—</strong></div>
+                  </div>
+                </section>
+
+                <section class="motion-console">
+                  <div class="imu-safety-banner waiting" id="imuSafetyBanner">
+                    <span class="safety-symbol">◆</span>
+                    <div><small>ATTITUDE ENVELOPE</small><strong id="imuSafetyStatus">WAITING FOR MPU</strong><em id="imuSafetyNote">Live rollover protection will appear here</em></div>
+                    <b id="imuTiltRisk">—</b>
+                  </div>
+
+                  <div class="imu-readiness-grid">
+                    <div class="motion-status-card" id="imuCaptureCard">
+                      <span class="motion-status-icon">◎</span>
+                      <div><small>STABLE CAPTURE</small><strong id="imuCaptureState">WAITING</strong><em id="imuCaptureNote">Motion gate unavailable</em></div>
+                    </div>
+                    <div class="motion-status-card" id="imuImpactCard">
+                      <span class="motion-status-icon">ϟ</span>
+                      <div><small>IMPACT MONITOR</small><strong id="imuImpactState">WAITING</strong><em id="imuImpactNote">No motion sample</em></div>
+                    </div>
+                  </div>
+
+                  <div class="vibration-monitor">
+                    <div><span>VIBRATION / SHOCK LOAD</span><strong id="imuVibrationValue">—</strong></div>
+                    <div class="vibration-track"><i id="imuVibrationBar"></i><span></span><span></span></div>
+                    <small><b id="imuAccelerationMagnitude">—</b> resultant g <b id="imuAngularRate">—</b> °/s rotation</small>
+                  </div>
+
+                  <div class="imu-vectors">
+                    <div class="imu-vector-row"><span>ACCELERATION</span><b>X <strong id="imuAccelX">—</strong></b><b>Y <strong id="imuAccelY">—</strong></b><b>Z <strong id="imuAccelZ">—</strong></b><em>g</em></div>
+                    <div class="imu-vector-row"><span>ANGULAR RATE</span><b>X <strong id="imuGyroX">—</strong></b><b>Y <strong id="imuGyroY">—</strong></b><b>Z <strong id="imuGyroZ">—</strong></b><em>°/s</em></div>
+                    <div class="imu-temperature"><span>IMU TEMPERATURE</span><strong id="imuTemperature">—</strong></div>
+                  </div>
+                </section>
+              </div>
+            </article>
+
             <article class="env-card panel" data-env="temperature" style="--env:#ff7433;">
               <button class="env-menu" type="button" data-pop-chart="temperature" title="Pop out temperature graph" aria-label="Pop out temperature graph"><span></span><span></span><span></span></button>
               <span class="env-watermark" aria-hidden="true"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M14 14.76V5a2 2 0 0 0-4 0v9.76a4 4 0 1 0 4 0Z"/></svg></span>
@@ -170,6 +239,35 @@
               <span class="env-pill" id="humidityStatus"><i></i><em>Waiting</em></span>
               <div class="env-chart"><canvas id="humiditySpark" role="img" aria-label="Humidity history graph"></canvas></div>
             </article>
+
+            <article class="env-card panel distance-card" data-env="distance" data-open-distance role="button" tabindex="0" aria-haspopup="dialog" aria-controls="distanceDialog" style="--env:#ffc65a;">
+              <div class="env-head">
+                <span class="env-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h5v6H3zM10 7v10M15 9.5a4 4 0 0 1 0 5M18 7a8 8 0 0 1 0 10"/></svg></span>
+                <div><p class="env-label">DISTANCE AHEAD</p><small class="distance-sensor-name">HC-SR04 ultrasonic sensor</small></div>
+                <span class="distance-live"><i></i>LIVE</span>
+              </div>
+              <div class="distance-card-body">
+                <div class="distance-card-reading">
+                  <strong class="env-value" id="distanceValue">—</strong>
+                  <span class="env-pill" id="distanceStatus"><i></i><em>Waiting</em></span>
+                  <small>Click for safety detail <span aria-hidden="true">↗</span></small>
+                </div>
+                <div class="safety-gauge safety-gauge-compact" aria-hidden="true">
+                  <svg viewBox="0 0 400 225">
+                    <path class="gauge-track" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
+                    <path class="gauge-zone zone-stop" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
+                    <path class="gauge-zone zone-caution" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
+                    <path class="gauge-zone zone-clear" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
+                    <path class="gauge-zone zone-safe" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
+                    <line class="gauge-needle" id="distanceNeedle" x1="200" y1="190" x2="200" y2="68"/>
+                    <circle class="gauge-hub" cx="200" cy="190" r="9"/>
+                    <text x="32" y="218">0</text><text x="350" y="218">400+</text>
+                  </svg>
+                  <strong id="distanceZoneLabel">WAITING</strong>
+                </div>
+              </div>
+            </article>
+
           </div>
 
         </section>
@@ -317,6 +415,62 @@
       <div class="chart-foot"><span>Rolling 1-hour window</span><span id="chartDialogUnit">°C</span></div>
     </dialog>
 
+    <dialog id="distanceDialog" class="modal distance-modal">
+      <div class="modal-header distance-modal-header">
+        <div class="distance-title">
+          <span class="env-badge" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9h5v6H3zM10 7v10M15 9.5a4 4 0 0 1 0 5M18 7a8 8 0 0 1 0 10"/></svg></span>
+          <div><p class="eyebrow">PROXIMITY SAFETY</p><h2>Distance ahead</h2><small>HC-SR04 ultrasonic sensor</small></div>
+        </div>
+        <div class="distance-dialog-actions"><span class="distance-live"><i></i>LIVE</span><button class="icon-button modal-close" aria-label="Close">×</button></div>
+      </div>
+      <div class="distance-dashboard">
+        <section class="distance-overview">
+          <div class="distance-primary-reading">
+            <strong id="distanceDetailValue">—</strong>
+            <span id="distanceDetailAlert" class="distance-alert"><i>!</i><em>WAITING FOR SENSOR</em></span>
+            <p id="distanceDetailMessage">Connect the HC-SR04 to begin monitoring.</p>
+          </div>
+          <div class="distance-gauge-wrap">
+            <div class="safety-gauge safety-gauge-detail" aria-label="Distance safety-zone gauge">
+              <svg viewBox="0 0 400 225" role="img">
+                <title>Distance safety zones</title>
+                <path class="gauge-track" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
+                <path class="gauge-zone zone-stop" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
+                <path class="gauge-zone zone-caution" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
+                <path class="gauge-zone zone-clear" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
+                <path class="gauge-zone zone-safe" d="M40 190 A160 160 0 0 1 360 190" pathLength="100"/>
+                <line class="gauge-needle" id="distanceDetailNeedle" x1="200" y1="190" x2="200" y2="62"/>
+                <circle class="gauge-hub" cx="200" cy="190" r="10"/>
+                <text x="31" y="218">0</text><text x="347" y="218">400+</text>
+              </svg>
+              <strong id="distanceDetailZone">WAITING</strong><span>Safety zone</span>
+            </div>
+            <div class="distance-zone-legend" aria-label="Safety zone thresholds">
+              <span><i class="stop"></i><b>0–30 cm</b><small>STOP</small></span>
+              <span><i class="caution"></i><b>30–70 cm</b><small>CAUTION</small></span>
+              <span><i class="clear"></i><b>70–150 cm</b><small>CLEAR</small></span>
+              <span><i class="safe"></i><b>&gt;150 cm</b><small>SAFE</small></span>
+            </div>
+          </div>
+        </section>
+        <section class="distance-analysis">
+          <article class="distance-history-card">
+            <div class="distance-section-head"><div><p class="eyebrow">DISTANCE HISTORY</p><h3>Last 30 seconds</h3></div><small>Live sonar samples</small></div>
+            <div class="distance-chart-wrap"><canvas id="distanceDetailChart" role="img" aria-label="Distance history over the last 30 seconds"></canvas></div>
+          </article>
+          <aside class="distance-stats">
+            <div class="distance-stat"><span class="stat-symbol approach">↗</span><div><small>Approach rate</small><strong id="distanceApproachRate">—</strong><em id="distanceApproachNote">Waiting</em></div></div>
+            <div class="distance-stat"><span class="stat-symbol nearest">⌄</span><div><small>Nearest (30s)</small><strong id="distanceNearest">—</strong><em>Minimum distance</em></div></div>
+            <div class="distance-stat"><span class="stat-symbol average">◷</span><div><small>Average (30s)</small><strong id="distanceAverage">—</strong><em>Average distance</em></div></div>
+            <div class="distance-stat"><span class="stat-symbol quality">⌁</span><div><small>Signal quality</small><strong id="distanceQuality">Waiting</strong><em id="distanceQualityNote">No samples</em></div></div>
+          </aside>
+        </section>
+        <footer class="distance-specs">
+          <span><b>Sensor</b><strong>HC-SR04</strong></span><span><b>Range</b><strong>2–400 cm</strong></span><span><b>Resolution</b><strong>≈0.3 cm</strong></span><span><b>Dashboard sample</b><strong>5 Hz · 200 ms</strong></span>
+        </footer>
+      </div>
+    </dialog>
+
     <div class="lightbox" id="lightbox" hidden>
       <button class="icon-button" id="lightboxClose" aria-label="Close image">×</button>
       <img id="lightboxImage" alt="Full-size captured frame" />
@@ -324,6 +478,6 @@
     </div>
 
     <div class="toast-stack" id="toastStack"></div>
-    <script src="/assets/app.js"></script>
+    <script src="/assets/app.js?v=20260827-4"></script>
   </body>
 </html>

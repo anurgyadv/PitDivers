@@ -1,8 +1,8 @@
 # PitDivers Rover Vision
 
 PitDivers is an ESP32-S3 rover vision prototype combining a live camera,
-Depth Anything 3 depth estimation and reconstruction, and DHT11 environmental
-telemetry in one local dashboard.
+Depth Anything 3 depth estimation and reconstruction, DHT11 environmental
+telemetry, and HC-SR04 ranging in one local dashboard.
 
 ## Features
 
@@ -15,7 +15,8 @@ telemetry in one local dashboard.
   resolution, point budget) and full-screen model viewing
 - Live DHT11 temperature and humidity environment cards with status pills,
   in-card history graphs, and a pop-out full-size view
-- Combined Freenove camera + DHT11 firmware for one-device operation
+- Live HC-SR04 distance readings with an in-card and pop-out history graph
+- Combined Freenove camera + DHT11 + HC-SR04 firmware for one-device operation
 
 ## Start the dashboard
 
@@ -34,7 +35,7 @@ only `secrets.example.h`.
 
 | Path | Purpose |
 |---|---|
-| `firmware/` | Combined FNK0082 camera and DHT11 Arduino firmware |
+| `firmware/` | Combined FNK0082 camera, DHT11, and HC-SR04 Arduino firmware |
 | `vision/` | Live DA3 depth, mapping, and object-detection scripts |
 | `webapp/` | FastAPI dashboard and browser interface |
 | `third_party/depth-anything-3/` | Vendored DA3 source with local CLI/gallery fixes |
