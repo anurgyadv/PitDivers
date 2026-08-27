@@ -24,6 +24,7 @@ from .core import (
     model_downloads,
     path_in,
     reconstruction_jobs,
+    rename_run,
 )
 
 
@@ -49,6 +50,11 @@ class ReconstructionRequest(BaseModel):
     conf_thresh_percentile: float = Field(default=55.0, ge=0, le=95)
     num_max_points: int = Field(default=1_000_000, ge=100_000, le=8_000_000)
     show_cameras: bool = False
+    frames: list[str] | None = None
+
+
+class RenameRunRequest(BaseModel):
+    new_name: str
 
 
 class ModelRequest(BaseModel):
@@ -263,6 +269,7 @@ def reconstruct(request: ReconstructionRequest) -> dict:
             request.conf_thresh_percentile,
             request.num_max_points,
             request.show_cameras,
+            request.frames,
         )
     except (ValueError, RuntimeError) as exc:
         raise HTTPException(409, str(exc)) from exc
@@ -275,6 +282,26 @@ def cancel_job(job_id: str) -> dict:
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
     return reconstruction_jobs.status()
+
+
+@app.post("/api/jobs/{job_id}/dismiss")
+def dismiss_job(job_id: str) -> dict:
+    try:
+        reconstruction_jobs.dismiss(job_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(409, str(exc)) from exc
+    return reconstruction_jobs.status()
+
+
+@app.post("/api/runs/{run_name}/rename")
+def rename_run_endpoint(run_name: str, request: RenameRunRequest) -> dict:
+    try:
+        final = rename_run(run_name, request.new_name)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+    return {"name": final}
 
 
 @app.get("/api/models")

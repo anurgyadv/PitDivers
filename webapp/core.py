@@ -3,9 +3,11 @@ from __future__ import annotations
 import json
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
+import tempfile
 import threading
 import time
 import uuid
@@ -588,13 +590,24 @@ class ReconstructionJobs:
         conf_thresh_percentile: float = 55.0,
         num_max_points: int = 1_000_000,
         show_cameras: bool = False,
+        frames: list[str] | None = None,
     ) -> dict[str, Any]:
         if model_id not in MODEL_IDS:
             raise ValueError("Unknown model")
         capture_dir = path_in(DATA_DIR, capture_name)
-        count = len(image_files(capture_dir))
-        if count < 2:
+        available = {path.name for path in image_files(capture_dir)}
+
+        selected: list[str] | None = None
+        if frames:
+            # Keep only real frames of this capture, in capture order.
+            requested = set(frames)
+            selected = [name for name in sorted(available) if name in requested]
+            if len(selected) < 2:
+                raise ValueError("Select at least two valid frames for reconstruction")
+        elif len(available) < 2:
             raise ValueError("At least two captured images are required")
+
+        count = len(selected) if selected is not None else len(available)
 
         with self._lock:
             if self._active_job:
@@ -619,6 +632,7 @@ class ReconstructionJobs:
                 "conf_thresh_percentile": conf_thresh_percentile,
                 "num_max_points": num_max_points,
                 "show_cameras": show_cameras,
+                "frames": selected,
                 "images": count,
                 "progress": 0,
                 "stage": "Queued",
@@ -638,16 +652,30 @@ class ReconstructionJobs:
             job = self._jobs[job_id]
             capture_dir = path_in(DATA_DIR, job["capture"])
             run_dir = path_in(RUNS_DIR, job["run_name"])
+            selected_frames = job.get("frames")
             job["state"] = "running"
             job["stage"] = "Starting DA3"
             job["started_at"] = utc_now()
+
+        # When only a subset of frames is chosen, stage copies in a temp folder
+        # so the DA3 `images` command (which reads a whole directory) sees only
+        # those frames. The staging dir is removed in the finally block.
+        staging_dir: Path | None = None
+        images_dir = capture_dir
+        if selected_frames:
+            staging_dir = Path(tempfile.mkdtemp(prefix="da3_input_", dir=str(ROOT_DIR)))
+            for name in selected_frames:
+                source = capture_dir / name
+                if source.is_file():
+                    shutil.copy2(source, staging_dir / name)
+            images_dir = staging_dir
 
         command = [
             sys.executable,
             "-m",
             "depth_anything_3.cli",
             "images",
-            str(capture_dir),
+            str(images_dir),
             "--model-dir",
             job["model_id"],
             "--export-format",
@@ -720,6 +748,8 @@ class ReconstructionJobs:
                 job["error"] = str(exc)
                 job["completed_at"] = utc_now()
         finally:
+            if staging_dir is not None:
+                shutil.rmtree(staging_dir, ignore_errors=True)
             with self._lock:
                 self._process = None
                 if self._active_job == job_id:
@@ -774,13 +804,26 @@ class ReconstructionJobs:
             except Exception:
                 process.kill()
 
+    def dismiss(self, job_id: str) -> None:
+        with self._lock:
+            job = self._jobs.get(job_id)
+            if not job:
+                raise ValueError("Unknown job")
+            if job["state"] in {"queued", "running", "cancelling"}:
+                raise RuntimeError("Stop the job before dismissing it")
+            del self._jobs[job_id]
+
     def status(self) -> dict[str, Any]:
         with self._lock:
-            jobs = sorted(
-                (job.copy() for job in self._jobs.values()),
-                key=lambda item: item["created_at"],
-                reverse=True,
-            )
+            jobs = []
+            for job in sorted(
+                self._jobs.values(), key=lambda item: item["created_at"], reverse=True
+            ):
+                summary = job.copy()
+                # The full frame list is an internal detail; expose only its size.
+                summary.pop("frames", None)
+                summary["selected_frames"] = len(job["frames"]) if job.get("frames") else 0
+                jobs.append(summary)
             return {"active_job": self._active_job, "jobs": jobs}
 
     def shutdown(self) -> None:
@@ -843,3 +886,24 @@ def list_runs() -> list[dict[str, Any]]:
             }
         )
     return sorted(runs, key=lambda item: item["updated_at"], reverse=True)
+
+
+def rename_run(old_name: str, new_name: str) -> str:
+    """Rename a reconstruction run folder, returning the final (unique) name."""
+    source = path_in(RUNS_DIR, old_name)
+    if not source.is_dir() or not (source / "scene.glb").is_file():
+        raise ValueError("Reconstruction not found")
+    base = safe_slug(new_name, "")
+    if not base:
+        raise ValueError("Enter a valid name")
+    if base == old_name:
+        return old_name
+    target = path_in(RUNS_DIR, base)
+    final = base
+    suffix = 2
+    while target.exists():
+        final = f"{base}_{suffix}"
+        target = path_in(RUNS_DIR, final)
+        suffix += 1
+    source.rename(target)
+    return final
