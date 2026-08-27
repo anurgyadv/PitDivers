@@ -62,14 +62,17 @@ MJPEG at SVGA. That is the root problem.
 - **Stop-and-shoot.** Drive → stop → capture → repeat. 25–40 sharp, well-spread
   views beat 300 blurry ones. Ties into the dashboard-teleop plan.
 
-## Tier 4 — Representation (planned, the "clarity" jump)
+## Tier 4 — Representation (the "clarity" jump)
 
-- **Point cloud → mesh.** Add an Open3D post-step (voxel downsample → statistical
-  outlier removal → estimate normals → Poisson surface reconstruction) to produce
-  a solid `scene_mesh.glb`.
+- **Point cloud → mesh.** ✅ Available as an offline tool:
+  [`tools/mesh_from_glb.py`](../tools/mesh_from_glb.py) runs the Open3D pipeline
+  (voxel downsample → statistical outlier removal → estimate/orient normals →
+  Poisson surface reconstruction → density trim) on any exported `scene.glb` and
+  writes a solid, shaded `*_mesh.glb`. See [`tools/README.md`](../tools/README.md).
 - **Gaussian Splatting.** DA3 ships a GS export path (`utils/export/gs.py`, the
   `gsdpt` model). Splats render near-photorealistically but need a GS-capable
-  checkpoint — a bigger lift for later.
+  checkpoint and `infer_gs` **at inference time on the source images** — it
+  cannot be applied to an already-exported GLB. A bigger lift for later.
 
 ## Suggested order of attack
 
