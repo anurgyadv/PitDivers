@@ -20,9 +20,10 @@ telemetry, and HC-SR04 ranging in one local dashboard.
 
 ## Start the dashboard
 
-On Windows, double-click `Start PitDivers Dashboard.cmd`. See
-`webapp/README.md` for the complete workflow and `vision/requirements.txt` for
-the Python dependencies.
+New machine? Follow [`QUICKSTART.md`](QUICKSTART.md) — brief, cross-platform
+steps to install and run on CPU or GPU. On Windows you can then double-click
+`Start PitDivers Dashboard.cmd`. See `webapp/README.md` for the complete
+workflow.
 
 ## ESP32-S3 firmware
 
