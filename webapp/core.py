@@ -166,6 +166,7 @@ class LivePipeline:
         self.model_id = "depth-anything/DA3-BASE"
         self.process_res = 504
         self.inference_fps = 10.0
+        self.depth_enabled = True
         self.state = "disconnected"
         self.model_state = "idle"
         self.error: str | None = None
@@ -195,7 +196,14 @@ class LivePipeline:
         self._telemetry_frames = 0
         self._sensor_snapshot: dict[str, Any] | None = None
 
-    def connect(self, stream_url: str, model_id: str, process_res: int, inference_fps: float) -> None:
+    def connect(
+        self,
+        stream_url: str,
+        model_id: str,
+        process_res: int,
+        inference_fps: float,
+        depth_enabled: bool = True,
+    ) -> None:
         self.disconnect()
         with self._lock:
             self._generation += 1
@@ -204,8 +212,9 @@ class LivePipeline:
             self.model_id = model_id
             self.process_res = process_res
             self.inference_fps = inference_fps
+            self.depth_enabled = depth_enabled
             self.state = "connecting"
-            self.model_state = "loading"
+            self.model_state = "loading" if depth_enabled else "off"
             self.error = None
             self.connected_at = utc_now()
             self._latest_frame = None
@@ -360,21 +369,55 @@ class LivePipeline:
             # model and a low process-res for a usable preview.
             device = "cuda" if torch.cuda.is_available() else "cpu"
 
-            model = DepthAnything3.from_pretrained(self.model_id).to(device).eval()
-            if self._stop_event.is_set() or generation != self._generation:
-                del model
-                torch.cuda.empty_cache()
-                return
-            with self._model_lock:
-                self._model = model
-            with self._lock:
-                self.model_state = "ready"
-
+            model = None
             last_sequence = -1
             last_inference_at = 0.0
             inference_counter = 0
             counter_started = time.perf_counter()
             while not self._stop_event.is_set() and generation == self._generation:
+                with self._lock:
+                    depth_enabled = self.depth_enabled
+
+                # Depth view turned off: release the model so no inference runs
+                # (frees GPU/CPU). The capture thread keeps the raw camera live.
+                if not depth_enabled:
+                    if model is not None:
+                        with self._model_lock:
+                            if self._model is model:
+                                self._model = None
+                        del model
+                        model = None
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                    with self._lock:
+                        if generation == self._generation:
+                            self.model_state = "off"
+                        self._depth_stats = None
+                        self._depth_fps = 0.0
+                        self._last_inference_ms = 0.0
+                    last_sequence = -1
+                    self._stop_event.wait(0.1)
+                    continue
+
+                # Depth view on but the model is not resident yet: load it.
+                if model is None:
+                    with self._lock:
+                        if generation == self._generation:
+                            self.model_state = "loading"
+                    loaded = DepthAnything3.from_pretrained(self.model_id).to(device).eval()
+                    if self._stop_event.is_set() or generation != self._generation:
+                        del loaded
+                        if torch.cuda.is_available():
+                            torch.cuda.empty_cache()
+                        return
+                    model = loaded
+                    with self._model_lock:
+                        self._model = model
+                    with self._lock:
+                        self.model_state = "ready"
+                    inference_counter = 0
+                    counter_started = time.perf_counter()
+
                 with self._lock:
                     sequence = self._raw_sequence
                     frame = None if self._latest_frame is None else self._latest_frame.copy()
@@ -460,6 +503,19 @@ class LivePipeline:
         with self._lock:
             self._sensor_snapshot = snapshot
 
+    def set_depth_enabled(self, enabled: bool) -> None:
+        """Turn the live DA3 depth view on or off without disconnecting.
+
+        Turning it off releases the model and stops all inference so the raw
+        camera view keeps running with no GPU/CPU cost; turning it back on
+        reloads the model. Safe to call while disconnected — it just records
+        the preference used the next time the stream connects.
+        """
+        with self._lock:
+            self.depth_enabled = bool(enabled)
+            if not enabled:
+                self._depth_stats = None
+
     def start_recording(
         self, requested_name: str, keyframe_fps: float, stable_only: bool = False
     ) -> str:
@@ -536,6 +592,7 @@ class LivePipeline:
                 "model_id": self.model_id,
                 "process_res": self.process_res,
                 "inference_fps": self.inference_fps,
+                "depth_enabled": self.depth_enabled,
                 "connected_at": self.connected_at,
                 "capture_fps": round(self._capture_fps, 1),
                 "depth_fps": round(self._depth_fps, 1),
