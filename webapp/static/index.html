@@ -125,7 +125,10 @@
             <article class="stream-card panel">
               <div class="card-heading">
                 <div><p class="eyebrow">DA3 DEPTH</p><h2>Live depth output</h2></div>
-                <span class="pill accent" id="depthModelPill">DA3 Base</span>
+                <div class="camera-heading-actions">
+                  <button class="motion-action" type="button" id="depthToggle" aria-pressed="true" title="Turn the DA3 depth view on or off. Off stops depth processing (frees the GPU/CPU) and keeps the raw camera running.">Depth: On</button>
+                  <span class="pill accent" id="depthModelPill">DA3 Base</span>
+                </div>
               </div>
               <div class="stream-frame" id="depthFrameWrap">
                 <img id="depthStream" alt="Depth Anything 3 live depth output" />
@@ -142,7 +145,7 @@
                   <div><span>MAX DEPTH</span><strong id="depthMax" class="far">—</strong><small>Farthest · relative</small></div>
                   <div><span>CONFIDENCE</span><strong id="depthConfidence">—</strong><small id="depthConfidenceNote">DA3 relative confidence</small></div>
                 </div>
-                <div class="empty-stream"><span>◇</span><strong>Depth idle</strong><small>The model loads after the stream connects</small></div>
+                <div class="empty-stream"><span>◇</span><strong id="depthEmptyTitle">Depth idle</strong><small id="depthEmptyNote">The model loads after the stream connects</small></div>
               </div>
             </article>
           </div>

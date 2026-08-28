@@ -122,10 +122,21 @@ class DepthAnything3(nn.Module, PyTorchModelHubMixin):
         Returns:
             Dictionary containing model predictions
         """
-        # Determine optimal autocast dtype
-        autocast_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+        # Determine optimal autocast dtype. On CPU, half-precision autocast is
+        # unreliable: torch.autocast(device_type="cpu", dtype=float16) raises on
+        # many PyTorch builds ("AutocastCPU only supports Bfloat16"), and several
+        # ops lack a Half CPU kernel. Run CPU inference in full fp32 instead so
+        # the live depth preview works without a GPU.
+        if image.device.type == "cuda":
+            autocast_dtype = torch.bfloat16 if torch.cuda.is_bf16_supported() else torch.float16
+            autocast_enabled = True
+        else:
+            autocast_dtype = torch.bfloat16
+            autocast_enabled = False
         with torch.no_grad():
-            with torch.autocast(device_type=image.device.type, dtype=autocast_dtype):
+            with torch.autocast(
+                device_type=image.device.type, dtype=autocast_dtype, enabled=autocast_enabled
+            ):
                 return self.model(
                     image, extrinsics, intrinsics, export_feat_layers, infer_gs, use_ray_pose, ref_view_strategy
                 )

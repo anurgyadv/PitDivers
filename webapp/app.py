@@ -36,6 +36,11 @@ class ConnectRequest(BaseModel):
     model_id: str = "depth-anything/DA3-BASE"
     process_res: int = Field(default=504, ge=280, le=1008)
     inference_fps: float = Field(default=10.0, gt=0, le=30)
+    depth_enabled: bool = True
+
+
+class DepthToggleRequest(BaseModel):
+    enabled: bool
 
 
 class RecordRequest(BaseModel):
@@ -130,6 +135,7 @@ def connect(request: ConnectRequest) -> dict:
             request.model_id,
             request.process_res,
             request.inference_fps,
+            request.depth_enabled,
         )
     except Exception as exc:
         raise HTTPException(400, str(exc)) from exc
@@ -139,6 +145,13 @@ def connect(request: ConnectRequest) -> dict:
 @app.post("/api/live/disconnect")
 def disconnect() -> dict:
     live_pipeline.disconnect()
+    return live_pipeline.status()
+
+
+@app.post("/api/live/depth")
+def set_depth(request: DepthToggleRequest) -> dict:
+    """Turn the live DA3 depth view on or off without disconnecting."""
+    live_pipeline.set_depth_enabled(request.enabled)
     return live_pipeline.status()
 
 

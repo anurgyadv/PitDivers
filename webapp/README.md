@@ -69,6 +69,16 @@ yaw, three-axis acceleration, three-axis angular rate, and IMU temperature.
 Only one reconstruction runs at a time. The **Stop** button terminates its DA3
 subprocess if a run is too large or stalls.
 
+### Turning the depth view off
+
+The **Depth: On/Off** button on the depth panel toggles the live DA3 depth view
+without disconnecting. Turning it off releases the model and stops all
+inference, so the raw camera keeps streaming with no GPU/CPU cost — useful on a
+machine without a GPU, or any time you only need the camera. Turning it back on
+reloads the model. You can also connect straight into camera-only mode by
+turning it off before pressing **Connect**; keyframe recording still works with
+depth off, so you can capture frames now and reconstruct on a GPU later.
+
 ### Live depth readout
 
 The depth panel shows a colour legend and a MIN / AVG / MAX / CONFIDENCE strip.

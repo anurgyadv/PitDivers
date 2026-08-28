@@ -9,6 +9,7 @@ const state = {
   jobs: { active_job: null, jobs: [] },
   sensorHistory: [],
   streamsAttached: false,
+  depthEnabled: true,
   lastCompletedJobs: new Set(),
   filmstrip: { capture: null, count: 0 },
   openChart: null,
@@ -104,8 +105,10 @@ async function refreshHealth() {
   try {
     const health = await api("/api/health");
     $("#systemDot").className = `status-dot ${health.ok ? "online" : "error"}`;
-    $("#gpuName").textContent = health.gpu || "GPU unavailable";
-    $("#systemStatus").textContent = health.cuda ? "CUDA ready • Local processing" : "CUDA unavailable";
+    $("#gpuName").textContent = health.gpu || "CPU (no GPU detected)";
+    $("#systemStatus").textContent = health.cuda
+      ? "CUDA ready • Local processing"
+      : "CPU mode • Local processing (slower)";
   } catch (error) {
     $("#systemDot").className = "status-dot error";
     $("#gpuName").textContent = "Service unavailable";
@@ -129,17 +132,64 @@ function detachStreams() {
   state.streamsAttached = false;
 }
 
+// Reflect the depth on/off state in the depth panel: update the toggle button,
+// and when off, drop the depth stream and show an explanatory placeholder while
+// the raw camera keeps running.
+function applyDepthEnabled(connected, depthOn) {
+  state.depthEnabled = depthOn;
+  const button = $("#depthToggle");
+  if (button) {
+    button.textContent = depthOn ? "Depth: On" : "Depth: Off";
+    button.setAttribute("aria-pressed", String(depthOn));
+  }
+  const depthImg = $("#depthStream");
+  const emptyTitle = $("#depthEmptyTitle");
+  const emptyNote = $("#depthEmptyNote");
+  if (connected && !depthOn) {
+    depthImg.removeAttribute("src");
+    $("#depthFrameWrap").classList.remove("streaming");
+    if (emptyTitle) emptyTitle.textContent = "Depth off";
+    if (emptyNote) emptyNote.textContent = "DA3 processing paused — raw camera still live";
+  } else {
+    if (emptyTitle) emptyTitle.textContent = "Depth idle";
+    if (emptyNote) emptyNote.textContent = "The model loads after the stream connects";
+    // Re-attach the depth stream if it was dropped while depth was off.
+    if (connected && depthOn && state.streamsAttached && !depthImg.getAttribute("src")) {
+      depthImg.src = `/api/live/depth.mjpg?t=${Date.now()}`;
+    }
+  }
+}
+
+async function toggleDepth() {
+  const next = !state.depthEnabled;
+  const connected = state.live.state !== "disconnected";
+  applyDepthEnabled(connected, next);
+  if (!connected) return; // Preference is applied on the next connect.
+  try {
+    state.live = await api("/api/live/depth", { method: "POST", body: { enabled: next } });
+    renderLiveStatus();
+    toast(
+      next ? "Depth view on" : "Depth view off",
+      next ? "DA3 depth is processing again." : "DA3 processing paused to free the GPU/CPU."
+    );
+  } catch (error) {
+    toast("Could not change depth view", error.message, "error");
+  }
+}
+
 function renderLiveStatus() {
   const live = state.live;
   const connected = live.state !== "disconnected";
+  const depthOn = connected ? live.depth_enabled !== false : state.depthEnabled;
   const cameraReady = Boolean(live.width && live.height);
   const modelReady = live.model_state === "ready";
   const failed = live.state === "error" || live.model_state === "error";
-  const busy = connected && (!cameraReady || !modelReady);
+  const busy = connected && (!cameraReady || (depthOn && !modelReady));
 
   if (connected) attachStreams(); else detachStreams();
   $("#rawFrameWrap").classList.toggle("streaming", cameraReady);
-  $("#depthFrameWrap").classList.toggle("streaming", modelReady && Boolean(live.inference_ms));
+  $("#depthFrameWrap").classList.toggle("streaming", depthOn && modelReady && Boolean(live.inference_ms));
+  applyDepthEnabled(connected, depthOn);
   $("#liveNavDot").classList.toggle("on", live.state === "live");
 
   const dot = $("#liveStatusDot");
@@ -148,7 +198,8 @@ function renderLiveStatus() {
   let detail = "Enter the ESP32 URL to begin";
   if (connected) {
     title = live.state === "reconnecting" ? "Reconnecting camera" : cameraReady ? "Camera connected" : "Connecting camera";
-    detail = live.error || (modelReady ? `${live.model_id} ready` : `Loading ${live.model_id || "DA3"}…`);
+    detail = live.error
+      || (!depthOn ? "Depth view off • camera only" : modelReady ? `${live.model_id} ready` : `Loading ${live.model_id || "DA3"}…`);
   }
   if (failed) title = "Attention required";
   $("#liveStatusText").textContent = title;
@@ -918,6 +969,7 @@ async function toggleConnection() {
           model_id: $("#liveModel").value,
           process_res: Number($("#processRes").value),
           inference_fps: Number($("#inferenceFps").value),
+          depth_enabled: state.depthEnabled,
         },
       });
       toast("Connecting", "Camera appears first; DA3 depth follows after the model loads.");
@@ -1325,6 +1377,7 @@ function closeDialog(dialog) {
 function bindEvents() {
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => setTab(button.dataset.tab)));
   $("#connectButton").addEventListener("click", toggleConnection);
+  $("#depthToggle").addEventListener("click", toggleDepth);
   $("#recordButton").addEventListener("click", toggleRecording);
   $("#tiltLimit").addEventListener("input", () => {
     $("#tiltLimitValue").textContent = `${Number($("#tiltLimit").value).toFixed(0)}°`;
