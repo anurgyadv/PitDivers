@@ -11,3 +11,4 @@ models/
 
 # Generated scratch files created by the vendored DA3 CLI/gallery.
 third_party/depth-anything-3/workspace/
+hardware/stl/

@@ -19,6 +19,23 @@ It serves two jobs from one source file:
 | File | Purpose |
 |---|---|
 | `rover.scad` | The complete parametric model. All dimensions live at the top. |
+| `build_stl.py` | Exports STLs without OpenSCAD (mirrors the same dimensions). |
+| `stl/` | Generated STL meshes (regenerate with `build_stl.py`; not tracked). |
+
+## Quick STL export without OpenSCAD
+
+If you don't have OpenSCAD handy, `build_stl.py` reproduces the same parts with
+[`trimesh`](https://trimesh.org) and writes STLs into `hardware/stl/`:
+
+```bash
+pip install trimesh manifold3d numpy
+python3 hardware/build_stl.py
+```
+
+The two printable brackets come out as watertight solids; the assembly is a
+combined preview mesh. For anything you plan to tweak dimensionally, prefer
+editing `rover.scad` and exporting from OpenSCAD — that file is the source of
+truth.
 
 ## Rendering and exporting
 
