@@ -85,6 +85,8 @@ void updateSonarReading(bool forceRead = false);
 bool initializeMpu6050();
 void updateMpu6050Reading(bool forceRead = false);
 
+IPAddress roverIP;
+
 void addCorsHeaders() {
   sensorServer.sendHeader("Access-Control-Allow-Origin", "*");
   sensorServer.sendHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
@@ -344,18 +346,33 @@ void setup() {
 
   const bool cameraReady = initializeCamera();
 
-  WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
-  WiFi.setSleep(false);
-  Serial.print("Connecting to Wi-Fi");
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
-    Serial.print(".");
+  // Try site Wi-Fi (STA) for ~25 s, fall back to rover hotspot (AP).
+  // Works whether credentials are present, wrong, or absent.
+  const bool hasStationCreds = WIFI_SSID[0] != '\0';
+
+  if (hasStationCreds) {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
+    WiFi.setSleep(false);
+    Serial.print("Connecting to Wi-Fi");
+    const uint32_t wifiStartMs = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - wifiStartMs < 25000) {
+      delay(500);
+      Serial.print(".");
+    }
+    Serial.println();
   }
-  while (!WiFi.STA.hasIP()) {
-    delay(100);
+
+  if (WiFi.status() == WL_CONNECTED && WiFi.STA.hasIP()) {
+    roverIP = WiFi.localIP();
+    Serial.printf("STA connected: %s\n", roverIP.toString().c_str());
+  } else {
+    Serial.println("STA unavailable — starting AP hotspot");
+    WiFi.mode(WIFI_AP);
+    WiFi.softAP(AP_SSID, AP_PASSWORD);
+    roverIP = WiFi.softAPIP();   // 192.168.4.1
+    Serial.printf("AP ready: SSID=%s  IP=%s\n", AP_SSID, roverIP.toString().c_str());
   }
-  Serial.println();
-  Serial.printf("Wi-Fi connected: %s\n", WiFi.localIP().toString().c_str());
 
   if (cameraReady) {
     startCameraServer();
