@@ -14,19 +14,18 @@
 // and rebuild — the public API is identical (see below).
 //
 // ============================================================================
-//  PIN MAP — see docs/GPIO_REFERENCE.md §1 (revised 5 Sept 2026)
+//  PIN MAP — matches the known-good two-motor L293D serial bench test
 // ============================================================================
-//   L293D IN1  <- ESP32-S3 GPIO 2    (Motor A direction bit 1)
-//   L293D IN2  <- ESP32-S3 GPIO 21   (Motor A direction bit 2)  [reclaimed from DHT11]
-//   L293D ENA  <- ESP32-S3 GPIO 47   (Motor A PWM enable)        [LEDC channel 2]
-//   L293D IN3  <- ESP32-S3 GPIO 44   (Motor B direction bit 1)  [reclaimed from UART0 RX]
-//   L293D IN4  <- ESP32-S3 GPIO 48   (Motor B direction bit 2)
-//   L293D ENB  <- ESP32-S3 GPIO 43   (Motor B PWM enable)        [LEDC channel 3]  [reclaimed from UART0 TX]
+//   L293D IN1  <- ESP32-S3 GPIO 1    (Motor A direction bit 1)
+//   L293D IN2  <- ESP32-S3 GPIO 14   (Motor A direction bit 2)
+//   L293D ENA  <- ESP32-S3 GPIO 41   (Motor A PWM enable)   [LEDC channel 2]
+//   L293D IN3  <- ESP32-S3 GPIO 21   (Motor B direction bit 1)
+//   L293D IN4  <- ESP32-S3 GPIO 47   (Motor B direction bit 2)
+//   L293D ENB  <- ESP32-S3 GPIO 42   (Motor B PWM enable)   [LEDC channel 3]
 //
-//  Serial debug: moved from UART0 (43/44) to USB-OTG via Serial.begin(115200, SERIAL_USB).
-//
-//  Sensors (camera DHT11, sonar, MPU) remain on their original GPIOs EXCEPT
-//  DHT11, which moved from GPIO 21 to GPIO 1 — see docs/GPIO_REFERENCE.md §1.
+//  These pins leave UART0 (43/44) free, so Serial debug uses the default
+//  UART (Serial.begin(115200)) — same as the working serial sketch.
+//  If your wiring differs, edit the pin constants in motors_direct.cpp.
 //
 // ============================================================================
 //  PWM SETUP (LEDC)

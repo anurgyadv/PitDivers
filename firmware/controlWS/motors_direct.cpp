@@ -7,12 +7,13 @@
 // Pin map — must match docs/GPIO_REFERENCE.md §1 (revised 5 Sept 2026).
 // Change ONLY here if the wiring changes.
 // ---------------------------------------------------------------------------
-static const uint8_t PIN_A_IN1  = 2;    // L293D IN1  (Motor A direction bit 1)
-static const uint8_t PIN_A_IN2  = 21;   // L293D IN2  (Motor A direction bit 2)
-static const uint8_t PIN_A_EN   = 47;   // L293D ENA  (Motor A PWM enable)
-static const uint8_t PIN_B_IN3  = 44;   // L293D IN3  (Motor B direction bit 1)
-static const uint8_t PIN_B_IN4  = 48;   // L293D IN4  (Motor B direction bit 2)
-static const uint8_t PIN_B_EN   = 43;   // L293D ENB  (Motor B PWM enable)
+// Pin map matches the known-good serial bench test (two-motor L293D demo).
+static const uint8_t PIN_A_IN1  = 1;    // L293D IN1  (Motor A direction bit 1)
+static const uint8_t PIN_A_IN2  = 14;   // L293D IN2  (Motor A direction bit 2)
+static const uint8_t PIN_A_EN   = 41;   // L293D ENA  (Motor A PWM enable)
+static const uint8_t PIN_B_IN3  = 21;   // L293D IN3  (Motor B direction bit 1)
+static const uint8_t PIN_B_IN4  = 47;   // L293D IN4  (Motor B direction bit 2)
+static const uint8_t PIN_B_EN   = 42;   // L293D ENB  (Motor B PWM enable)
 
 // LEDC channels — 0 and 1 are reserved for the camera's XCLK timer.
 // We use 2 for Motor A, 3 for Motor B.

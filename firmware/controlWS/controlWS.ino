@@ -6,8 +6,10 @@
 // firmware (PitDivers_Camera_DHT11), but in a separate flash slot. They do
 // not run at the same time. Pick one with `esptool.py write_flash`.
 //
-// HARDWARE: see docs/GPIO_REFERENCE.md §1 (revised 5 Sept 2026) and
-//           docs/11-wiring-l293d-direct.md (new, written with this sketch).
+// HARDWARE: L293D driven directly from the S3. Pin map matches the known-good
+//           two-motor serial bench test:
+//             Motor A: IN1=GPIO 1  IN2=GPIO 14  ENA=GPIO 41  (LEDC ch 2)
+//             Motor B: IN3=GPIO 21 IN4=GPIO 47  ENB=GPIO 42  (LEDC ch 3)
 //           A wiring summary also lives in this folder's README.md.
 //
 // NETWORK:
@@ -46,7 +48,7 @@
 //   * The HTML UI holds a 250 ms heartbeat while a direction button is held,
 //     so the firmware watchdog never trips on a healthy session.
 //
-// SERIAL: USB-OTG (Serial = SERIAL_USB) — UART0 (43/44) is now used for motors.
+// SERIAL: default UART (Serial.begin(115200)) — motors do not use UART0.
 //
 // NO CAMERA, NO SENSORS, NO WIFI STATION MODE — this sketch is AP-only,
 // serves an open SSID "RoverPit" (same as camera firmware for workshop UX).
@@ -315,17 +317,18 @@ void handleHttpNotFound()
 // ---------------------------------------------------------------------------
 void setup()
 {
-    // USB-OTG serial so we don't fight the motors on UART0 (43/44).
-    Serial.begin(115200, SERIAL_USB);
-    delay(300);  // USB-Serial settle
+    // Motors do not use UART0 (43/44), so the default UART serial is free —
+    // same as the working serial bench test.
+    Serial.begin(115200);
+    delay(300);  // serial settle
 
     Serial.println();
     Serial.println("=================================================");
     Serial.println(" Pit Divers -- controlWS (WebSocket motor driver)");
     Serial.println("=================================================");
-    Serial.println("Pin map (see docs/GPIO_REFERENCE.md §1):");
-    Serial.println("  L293D IN1=GPIO 2   IN2=GPIO 21  ENA=GPIO 47");
-    Serial.println("  L293D IN3=GPIO 44  IN4=GPIO 48  ENB=GPIO 43");
+    Serial.println("Pin map (matches the working serial bench test):");
+    Serial.println("  L293D IN1=GPIO 1   IN2=GPIO 14  ENA=GPIO 41");
+    Serial.println("  L293D IN3=GPIO 21  IN4=GPIO 47  ENB=GPIO 42");
     Serial.println("PWM: LEDC ch 2/3, 1 kHz, 11-bit (max 2047)");
     Serial.println("Watchdog: 1500 ms auto-stop");
     Serial.println();

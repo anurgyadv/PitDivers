@@ -20,21 +20,23 @@ time (flash whichever one you want to test).
 
 ## Wiring — L293D driven directly from the S3
 
+This pin map matches the known-good two-motor L293D serial bench test.
+
 | L293D pin | Function | ESP32-S3 GPIO | Notes |
 |---|---|---|---|
-| IN1 | Motor A direction 1 | **GPIO 2** | |
-| IN2 | Motor A direction 2 | **GPIO 21** | reclaimed from DHT11 |
-| ENA | Motor A PWM enable | **GPIO 47** | LEDC channel 2 |
-| IN3 | Motor B direction 1 | **GPIO 44** | reclaimed from UART0 RX |
-| IN4 | Motor B direction 2 | **GPIO 48** | |
-| ENB | Motor B PWM enable | **GPIO 43** | LEDC channel 3, reclaimed from UART0 TX |
+| IN1 | Motor A direction 1 | **GPIO 1** | |
+| IN2 | Motor A direction 2 | **GPIO 14** | |
+| ENA | Motor A PWM enable | **GPIO 41** | LEDC channel 2 |
+| IN3 | Motor B direction 1 | **GPIO 21** | |
+| IN4 | Motor B direction 2 | **GPIO 47** | |
+| ENB | Motor B PWM enable | **GPIO 42** | LEDC channel 3 |
 
 Motor power (the L293D **Vs / motor-supply** pin) comes from the battery/motor
 rail, **not** the S3's 3.3 V. Tie the L293D and ESP32-S3 grounds together. The
 L293D logic pin (Vss) goes to 5 V/3.3 V logic as per your board.
 
-Because motors now use the UART0 pins (43/44), **serial debug is on USB-OTG**
-(`Serial.begin(115200, SERIAL_USB)`), not the UART0 header.
+These pins leave UART0 (43/44) free, so **serial debug uses the default UART**
+(`Serial.begin(115200)`) — the same Serial Monitor you used for the bench test.
 
 PWM is LEDC at **1 kHz, 11-bit** (max duty 2047). Channels 0 and 1 are left free
 for the camera build's XCLK timer; this sketch uses channels 2 and 3.
@@ -58,7 +60,6 @@ Install once from the Arduino Library Manager (or `arduino-cli lib install`):
 2. Open `controlWS.ino`.
 3. Board settings (same board as the camera build):
    - Board: **ESP32S3 Dev Module**
-   - USB CDC On Boot: **Enabled** (needed for USB-OTG serial)
    - CPU: 240 MHz · Flash: QIO 80 MHz · Flash size: 8 MB
    - Partition scheme: Default 4 MB with SPIFFS
    - PSRAM: OPI PSRAM
