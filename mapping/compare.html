@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>PitDivers · Saved and current room</title>
+<style>
+:root{color-scheme:dark;font-family:system-ui,sans-serif;color:#e9f0f8;background:#090f19}*{box-sizing:border-box}body{margin:0}header{padding:18px 24px;border-bottom:1px solid #29374a;display:flex;justify-content:space-between;gap:15px;align-items:center}h1{font-size:23px;margin:0}a{color:#6ce1c3}main{padding:18px 24px;max-width:1800px;margin:auto}.note{color:#a9b8ca;font-size:13px;margin:0 0 16px}.maps{display:grid;grid-template-columns:1fr 1fr;gap:14px}.panel{background:#101b29;border:1px solid #2b3d53;border-radius:12px;overflow:hidden}.head{display:flex;justify-content:space-between;align-items:center;padding:12px 16px;border-bottom:1px solid #2b3d53;gap:8px}.head strong{font-size:15px}.head span{color:#a9b8ca;font-size:12px}.canvas-wrap{height:540px;position:relative;background:#0c1623}canvas{display:block;width:100%;height:100%}.foot{padding:10px 16px;color:#a9b8ca;font-size:12px;min-height:42px}select,input{color:#e9f0f8;background:#122338;border:1px solid #3a5069;border-radius:6px;padding:6px}label{font-size:12px;color:#a9b8ca}.controls{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:0 0 13px}.controls input{width:72px}.live{color:#6ce1c3}.stale{color:#ffc978}@media(max-width:900px){.maps{grid-template-columns:1fr}.canvas-wrap{height:420px}}
+</style></head><body>
+<header><h1>Saved room ↔ current scan map</h1><a href="/">Room dashboard</a></header>
+<main><p class="note">The right map grows from new LiDAR frames. Its rover marker is the current ROS estimate. The marker on the saved map is projected from the starting pose and is <strong>not</strong> a second independent localization fix.</p>
+<div class="controls"><label>Saved room <select id="saved"></select></label><label>Saved A offset X <input id="offsetX" type="number" step="0.05" value="0"> m</label><label>Y <input id="offsetY" type="number" step="0.05" value="0"> m</label><label>Rotation <input id="rotation" type="number" step="5" value="0"> °</label><span id="stream">Connecting…</span></div>
+<div class="maps"><section class="panel"><div class="head"><strong>Saved room</strong><span id="savedName"></span></div><div class="canvas-wrap"><canvas id="savedCanvas"></canvas></div><div class="foot" id="savedPose">Loading saved map…</div></section>
+<section class="panel"><div class="head"><strong>Current room · new frames</strong><span id="currentName"></span></div><div class="canvas-wrap"><canvas id="currentCanvas"></canvas></div><div class="foot" id="currentPose">Waiting for new ROS map…</div></section></div></main>
+<script>
+const $=id=>document.getElementById(id), fixed=(n,d=2)=>Number.isFinite(n)?n.toFixed(d):'—';
+let saved=null, state=null, liveOrigin=null, liveRun=null;
+function size(c){const r=c.getBoundingClientRect(),d=window.devicePixelRatio||1,w=Math.max(1,r.width),h=Math.max(1,r.height);c.width=Math.round(w*d);c.height=Math.round(h*d);const ctx=c.getContext('2d');ctx.setTransform(d,0,0,d,0,0);return [ctx,w,h]}
+function draw(id,map,marker,markerColor){const [ctx,w,h]=size($(id));ctx.fillStyle='#0c1623';ctx.fillRect(0,0,w,h);if(!map)return;
+ const r=map.resolution||.05,cells=map.cells||[],path=map.path||[];let xs=[],ys=[];
+ for(const c of cells){xs.push(c[0]*r);ys.push(c[1]*r)}for(const p of path){xs.push(p[0]);ys.push(p[1])}if(marker){xs.push(marker[0]);ys.push(marker[1])}
+ if(!xs.length){ctx.fillStyle='#9aabc0';ctx.fillText('Waiting for mapped cells',20,30);return}
+ let minX=Math.min(...xs)-.4,maxX=Math.max(...xs)+.4,minY=Math.min(...ys)-.4,maxY=Math.max(...ys)+.4;
+ let s=Math.min((w-32)/(maxX-minX||1),(h-32)/(maxY-minY||1));s=Math.min(s,130);const midX=(minX+maxX)/2,midY=(minY+maxY)/2;
+ const xy=(x,y)=>[w/2+(x-midX)*s,h/2-(y-midY)*s];
+ for(const c of cells){const [x,y]=xy(c[0]*r,c[1]*r);ctx.fillStyle=c[2]>=5?'#b3c7d9':c[2]<=-4?'#193849':'#536575';ctx.fillRect(x-r*s/2,y-r*s/2,Math.max(1,r*s+1),Math.max(1,r*s+1))}
+ if(path.length){ctx.strokeStyle='#6ce1c3';ctx.lineWidth=2;ctx.beginPath();path.forEach((p,i)=>{const q=xy(p[0],p[1]);i?ctx.lineTo(...q):ctx.moveTo(...q)});ctx.stroke();const a=xy(path[0][0],path[0][1]);ctx.fillStyle='#fff';ctx.beginPath();ctx.arc(...a,4,0,Math.PI*2);ctx.fill();ctx.fillText('A',a[0]+7,a[1]-7)}
+ if(marker){const p=xy(marker[0],marker[1]);ctx.fillStyle=markerColor;ctx.strokeStyle='#092219';ctx.lineWidth=2;ctx.beginPath();ctx.arc(...p,7,0,Math.PI*2);ctx.fill();ctx.stroke()}
+ ctx.fillStyle='#91a5bb';ctx.font='11px system-ui';ctx.fillText('Free · dark blue    Wall · light blue    A · white',15,h-14)}
+function project(){if(!saved||!state||!liveOrigin||!state.map?.pose)return null;const base=saved.map.path?.[0]||[0,0,0],p=state.map.pose,a=(Number($('rotation').value)||0)*Math.PI/180+(base[2]||0)-(liveOrigin[2]||0),dx=p[0]-liveOrigin[0],dy=p[1]-liveOrigin[1];return [base[0]+(Number($('offsetX').value)||0)+dx*Math.cos(a)-dy*Math.sin(a),base[1]+(Number($('offsetY').value)||0)+dx*Math.sin(a)+dy*Math.cos(a)]}
+function render(){const current=state?.backend==='ros'?state.map:null,age=state?.revision?Date.now()/1000-state.revision:Infinity,fresh=current?.tracking==='tracking'&&age<5&&state.network?.connected;
+ if(state?.run_id!==liveRun){liveOrigin=null;liveRun=state?.run_id}if(current?.path?.length&&!liveOrigin)liveOrigin=current.path[0];
+ const projected=project();draw('savedCanvas',saved?.map,projected,fresh?'#6ce1c3':'#ffc978');draw('currentCanvas',current,current?.pose,fresh?'#6ce1c3':'#ffc978');
+ $('savedPose').textContent=projected?`Projected x ${fixed(projected[0])} m · y ${fixed(projected[1])} m · starting-pose alignment only`:'Saved geometry; waiting for a current origin';
+ $('currentPose').textContent=current?.pose?`ROS x ${fixed(current.pose[0])} m · y ${fixed(current.pose[1])} m · ${fresh?'live estimate':'last known estimate'}`:'Start a new ROS mapping session to build the current map';
+ $('currentName').textContent=current?`Run ${state.run_id.slice(0,8)}`:'Not running';$('stream').textContent=fresh?'Live scan map updating':current?'Current map waiting for fresh scans':'New ROS map not running';$('stream').className=fresh?'live':'stale';$('savedName').textContent=saved?`Room ${saved.run_id.slice(0,8)}`:'No saved room'}
+async function loadSaved(){const id=$('saved').value;if(!id)return;saved=await (await fetch('/api/saved/map?id='+encodeURIComponent(id))).json();render()}
+async function init(){try{const list=await (await fetch('/api/saved')).json();$('saved').replaceChildren(...list.map(x=>new Option(`${x.id.slice(0,8)} · ${new Date(x.saved_at*1000).toLocaleString()}`,x.id)));$('saved').value=list.some(x=>x.id==='c3c666243fd2')?'c3c666243fd2':list[0]?.id||'';await loadSaved()}catch(e){$('stream').textContent='Could not load saved map: '+e.message}}
+async function poll(){try{const res=await fetch('/api/state');if(!res.ok)throw Error('Dashboard unavailable');state=await res.json();render()}catch(e){$('stream').textContent=e.message;$('stream').className='stale'}setTimeout(poll,1000)}
+$('saved').onchange=loadSaved;for(const id of ['offsetX','offsetY','rotation'])$(id).oninput=render;window.onresize=render;init();poll();
+</script></body></html>

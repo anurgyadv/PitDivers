@@ -1,0 +1,11 @@
+const assert = require('node:assert/strict');
+const {displayedMap,routeDisplayPath,routeClickSource} = require('./map_view.js');
+const source = [[0,0,0,10],[1,0,0,11]];
+const live = {path:[[5,5,0,10],[5,6,0,11]],pose:[5,5.5,0]};
+const saved = {run_id:'a',map:{path:source,pose:[1,0,0]}};
+assert.equal(displayedMap({backend:'localization',run_id:'a',map:live},saved),live);
+assert.equal(displayedMap({backend:'localization',run_id:'b',map:live},saved),saved.map);
+assert.deepEqual(routeDisplayPath(source,live),live.path);
+assert.deepEqual(routeClickSource(source,live,5,6.1),{x_m:1,y_m:0});
+assert.throws(()=>routeClickSource(source,live,10,10));
+console.log('5 map-view checks passed');
