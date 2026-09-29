@@ -50,7 +50,13 @@ python3 "$ROOT/mapping/ros_bridge.py" --db "$HOME/pitdivers_ros/room_scans.sqlit
   --resume-after-gap --quality-file "$QUALITY" \
   --output "$ROOT/data/ros-map/localization-live.json" >"$LOGDIR/bridge.log" 2>&1 & pids+=("$!")
 sleep 2
-ros2 service call /pitdivers/relocalize std_srvs/srv/Empty '{}'
+if [[ "${PITDIVERS_SEED_CURRENT:-0}" == "1" && ! -f "$ROOT/data/demo/seeded-$RUN" ]]; then
+  python3 "$ROOT/mapping/seed_demo_pose.py" "$ROOT/data/ros-map/rebuilt-$RUN.json"
+  mkdir -p "$ROOT/data/demo"
+  touch "$ROOT/data/demo/seeded-$RUN"
+else
+  ros2 service call /pitdivers/relocalize std_srvs/srv/Empty '{}'
+fi
 if [[ "${PITDIVERS_LOCALIZATION_ONLY:-0}" != "1" ]]; then
   python3 "$ROOT/mapping/autonav_ros.py" --map-id "$RUN" \
     --rover "${PITDIVERS_ROVER_URL:-http://192.168.0.99}" \

@@ -9,6 +9,38 @@
 #include <stdlib.h>
 
 #include "secrets.h"
+#include "TurnCalibration.h"
+#include "OnboardMotion.h"
+#include "ControlTypes.h"
+void controlTask(void*);
+void setupControlRoutes();
+#include <Preferences.h>
+TurnCalibration turnCalibration;
+Preferences turnPreferences;
+bool calibrationSaved=false;
+OnboardMotion onboard;
+QueueHandle_t controlQueue, scanQueue;
+SemaphoreHandle_t storageMutex;
+struct StorageLock {
+  bool held;
+  explicit StorageLock(TickType_t wait):held(xSemaphoreTake(storageMutex,wait)==pdTRUE) {}
+  ~StorageLock(){if(held)xSemaphoreGive(storageMutex);}
+};
+uint32_t logBytes=0;
+portMUX_TYPE sharedMux=portMUX_INITIALIZER_UNLOCKED;
+ControlView sharedView;
+ScanRecord sharedScan;
+uint32_t droppedScans=0,calibrationVersion=0;
+int rawFrontIndex=192; // clockwise raw indices: -degrees(2.936) mod 360
+bool emergencyStop=false;
+ControlView controlView() { portENTER_CRITICAL(&sharedMux); auto v=sharedView; portEXIT_CRITICAL(&sharedMux); return v; }
+ScanRecord scanView() { portENTER_CRITICAL(&sharedMux); auto v=sharedScan; portEXIT_CRITICAL(&sharedMux); return v; }
+void submit(ControlRequest request) {
+  if (request.kind==StopControl) xQueueReset(controlQueue);
+  if (xQueueSend(controlQueue,&request,0)!=pdTRUE) {
+    portENTER_CRITICAL(&sharedMux);emergencyStop=true;portEXIT_CRITICAL(&sharedMux);
+  }
+}
 
 // Freenove ESP32-S3 -> existing L298N input wires.
 constexpr uint8_t IN1 = 1;   // yellow
@@ -29,7 +61,7 @@ bool storageReady = false;
 uint32_t storageErrors = 0;
 uint32_t bootId = 0;
 constexpr uint32_t DHT_INTERVAL_MS = 2000;
-constexpr uint32_t IMU_INTERVAL_MS = 250;
+constexpr uint32_t IMU_INTERVAL_MS = 10;
 DHTesp dht;
 bool dhtValid = false;
 float temperatureC = 0;
@@ -40,7 +72,6 @@ bool imuValid = false;
 float accelG[3] = {};
 float gyroDps[3] = {};
 float imuTemperatureC = 0;
-uint32_t lastImuMs = 0;
 uint32_t lastImuOkMs = 0;
 constexpr uint32_t LIDAR_TIMEOUT_MS = 5000;
 constexpr int TARGET_RPM = 300;
@@ -56,7 +87,6 @@ uint32_t fullScanStartMs = 0;
 uint32_t fullScanEndMs = 0;
 uint32_t fullScanSeq = 0;
 bool fullScanReady = false;
-String latestRecordJson;
 bool lidarRunning = false;
 uint8_t lidarDuty = 0;
 float lidarRpm = 0;
@@ -70,23 +100,12 @@ const char* lidarFault = "stopped";
 
 void publishFullScan();
 
-constexpr uint32_t DRIVE_LEASE_MS = 600;
 constexpr uint8_t START_SPEED = 160;
 WebServer server(80);
 uint8_t speedValue = START_SPEED;
-uint32_t lastDriveMs = 0;
 uint32_t lastWifiReconnectMs = 0;
-bool moving = false;
-const char* motion = "stopped";
 
-void stopMotors() {
-  analogWrite(IN1, 0);
-  analogWrite(IN2, 0);
-  analogWrite(IN3, 0);
-  analogWrite(IN4, 0);
-  moving = false;
-  motion = "stopped";
-}
+void stopMotors() { submit({StopControl}); }
 
 void driveMotor(uint8_t forwardPin, uint8_t reversePin, int value) {
   value = constrain(value, -255, 255);
@@ -97,13 +116,7 @@ void driveMotor(uint8_t forwardPin, uint8_t reversePin, int value) {
   if (value < 0) analogWrite(reversePin, -value);
 }
 
-void drive(int left, int right, const char* name) {
-  driveMotor(IN1, IN2, left);
-  driveMotor(IN3, IN4, right);
-  moving = left != 0 || right != 0;
-  motion = moving ? name : "stopped";
-  lastDriveMs = millis();
-}
+void drive(int left,int right,const char*) { submit({ManualControl,0,0,left,right}); }
 
 bool checksumOK(const uint8_t* data) {
   uint32_t sum = 0;
@@ -127,6 +140,7 @@ void startLidar() {
   packetPos = 0;
   nextCycleIndex = 0xA0;
   fullScanReady = false;
+  portENTER_CRITICAL(&sharedMux);sharedScan=ScanRecord{};portEXIT_CRITICAL(&sharedMux);
   goodPackets = badPackets = 0;
   lidarBytes = lidarHeaders = lidarIndexErrors = 0;
   lidarRpm = 0;
@@ -228,21 +242,19 @@ bool readImu() {
 
 void pollSensors() {
   const uint32_t now = millis();
-  if (now - lastDhtMs >= DHT_INTERVAL_MS) {
+  if (!controlView().calActive && now - lastDhtMs >= DHT_INTERVAL_MS) {
     lastDhtMs = now;
     const TempAndHumidity reading = dht.getTempAndHumidity();
+    portENTER_CRITICAL(&sharedMux);
     dhtValid = !isnan(reading.temperature) && !isnan(reading.humidity);
     if (dhtValid) {
       temperatureC = reading.temperature;
       humidityPercent = reading.humidity;
       lastDhtOkMs = now;
     }
+    portEXIT_CRITICAL(&sharedMux);
   }
-  if (now - lastImuMs >= IMU_INTERVAL_MS) {
-    lastImuMs = now;
-    imuValid = readImu();
-    if (imuValid) lastImuOkMs = now;
-  }
+
 }
 
 String environmentJson() {
@@ -254,56 +266,51 @@ String environmentJson() {
 }
 
 String imuJson() {
-  String json = String("{\"ok\":") + (imuValid ? "true" : "false") +
-    ",\"sensor\":\"MPU6050\",\"sda\":3,\"scl\":48";
-  if (imuValid) {
-    json += ",\"accel_g\":[" + String(accelG[0], 3) + "," + String(accelG[1], 3) + "," + String(accelG[2], 3) + "]";
-    json += ",\"gyro_dps\":[" + String(gyroDps[0], 2) + "," + String(gyroDps[1], 2) + "," + String(gyroDps[2], 2) + "]";
-    json += ",\"temperature_c\":" + String(imuTemperatureC, 1);
-  }
-  return json + "}";
+  auto v=controlView();
+  String json=String("{\"ok\":")+(v.imuOK?"true":"false")+",\"sensor\":\"MPU6050\",\"sda\":3,\"scl\":48";
+  json+=",\"accel_g\":["+String(v.accel[0],3)+","+String(v.accel[1],3)+","+String(v.accel[2],3)+"]";
+  json+=",\"gyro_dps\":["+String(v.gyro[0],3)+","+String(v.gyro[1],3)+","+String(v.gyro[2],3)+"]";
+  return json+",\"yaw_deg\":"+String(v.yaw,2)+",\"ready\":"+(v.ready?"true":"false")+"}";
 }
 
 void publishFullScan() {
-  String json;
-  json.reserve(2800);
-  json = String("{\"boot_id\":") + bootId + ",\"seq\":" + fullScanSeq +
-    ",\"start_ms\":" + fullScanStartMs + ",\"end_ms\":" + fullScanEndMs +
-    ",\"scan_time_ms\":" + (fullScanEndMs - fullScanStartMs) +
-    ",\"rpm\":" + String(lidarRpm, 1) +
-    ",\"temperature_c\":";
-  if (dhtValid) json += String(temperatureC, 1);
-  else json += "null";
-  json += ",\"humidity_percent\":";
-  if (dhtValid) json += String(humidityPercent, 1);
-  else json += "null";
-  json += ",\"environment_age_ms\":";
-  if (dhtValid) json += String(fullScanEndMs - lastDhtOkMs);
-  else json += "null";
-  json += ",\"imu\":";
-  if (imuValid) {
-    json += String("{\"age_ms\":") + (fullScanEndMs - lastImuOkMs) +
-      ",\"accel_g\":[" + String(accelG[0], 3) + "," + String(accelG[1], 3) + "," + String(accelG[2], 3) +
-      "],\"gyro_dps\":[" + String(gyroDps[0], 2) + "," + String(gyroDps[1], 2) + "," + String(gyroDps[2], 2) + "]}";
-  } else json += "null";
-  json += ",\"ranges_mm\":[";
-  for (int i = 0; i < 360; ++i) {
-    if (i) json += ',';
-    json += fullDistanceMm[i];
-  }
-  json += "]}";
-  latestRecordJson = json;
+  ScanRecord r;r.seq=fullScanSeq;r.start=fullScanStartMs;r.end=fullScanEndMs;r.rpm=lidarRpm;
+  memcpy(r.mm,fullDistanceMm,sizeof(r.mm));memcpy(r.accel,accelG,sizeof(r.accel));memcpy(r.gyro,gyroDps,sizeof(r.gyro));
+  r.imuAt=lastImuOkMs;r.imuOK=imuValid;
+  portENTER_CRITICAL(&sharedMux);
+  r.environmentOK=dhtValid;r.temperature=temperatureC;r.humidity=humidityPercent;r.environmentAt=lastDhtOkMs;
+  sharedScan=r;
+  portEXIT_CRITICAL(&sharedMux);
+  if(xQueueSend(scanQueue,&r,0)!=pdTRUE)++droppedScans;
+}
 
-  if (!storageReady) return;
-  File log = SD_MMC.open(LOG_PATH, FILE_APPEND);
-  if (!log) { ++storageErrors; storageReady = false; return; }
-  const size_t written = log.println(json);
-  log.flush();
-  log.close();
-  if (written != json.length() + 2 && written != json.length() + 1) {
-    ++storageErrors;
-    storageReady = false;
-  }
+String recordJson(const ScanRecord& r) {
+  String json;json.reserve(2900);
+  json=String("{\"boot_id\":")+bootId+",\"seq\":"+r.seq+",\"start_ms\":"+r.start+",\"end_ms\":"+r.end+
+    ",\"scan_time_ms\":"+(r.end-r.start)+",\"rpm\":"+String(r.rpm,1)+",\"temperature_c\":";
+  json+=r.environmentOK?String(r.temperature,1):"null";
+  json+=",\"humidity_percent\":";json+=r.environmentOK?String(r.humidity,1):"null";
+  json+=",\"environment_age_ms\":";json+=r.environmentOK?String(r.end-r.environmentAt):"null";
+  json+=",\"imu\":";
+  if(r.imuOK)json+=String("{\"age_ms\":")+(r.end-r.imuAt)+",\"accel_g\":["+String(r.accel[0],3)+","+String(r.accel[1],3)+","+String(r.accel[2],3)+
+    "],\"gyro_dps\":["+String(r.gyro[0],3)+","+String(r.gyro[1],3)+","+String(r.gyro[2],3)+"]}";
+  else json+="null";
+  json+=",\"ranges_mm\":[";
+  for(int i=0;i<360;++i){if(i)json+=',';json+=r.mm[i];}
+  return json+"]}";
+}
+
+void logQueuedScan() {
+  StorageLock lock(portMAX_DELAY);
+  ScanRecord r;if(xQueueReceive(scanQueue,&r,0)!=pdTRUE)return;
+  if(!storageReady)return;
+  String json=recordJson(r);
+  File log=SD_MMC.open(LOG_PATH,FILE_APPEND);
+  if(!log){++storageErrors;storageReady=false;return;}
+  const size_t written=log.println(json);log.flush();
+  const uint32_t bytes=log.size();log.close();
+  portENTER_CRITICAL(&sharedMux);logBytes=bytes;portEXIT_CRITICAL(&sharedMux);
+  if(written!=json.length()+2 && written!=json.length()+1){++storageErrors;storageReady=false;}
 }
 
 void startStorage() {
@@ -314,6 +321,7 @@ void startStorage() {
   storageReady = true;
   // If power failed during a write, separate the partial line from new records.
   File existing = SD_MMC.open(LOG_PATH, FILE_READ);
+  if(existing)logBytes=existing.size();
   if (existing && existing.size() > 0) {
     existing.seek(existing.size() - 1);
     const int tail = existing.read();
@@ -324,6 +332,10 @@ void startStorage() {
     }
   }
   Serial.println("microSD scan log ready");
+}
+
+void storageTask(void*) {
+  for(;;) { pollSensors();logQueuedScan();vTaskDelay(pdMS_TO_TICKS(2)); }
 }
 
 const char PAGE[] PROGMEM = R"HTML(
@@ -367,6 +379,7 @@ setInterval(()=>{
 )HTML";
 
 void respondDrive(int left, int right, const char* name) {
+  if (controlView().calActive || controlView().mode==OnboardMotion::Turn || controlView().mode==OnboardMotion::Hold) { server.send(409,"application/json","{\"error\":\"Automatic motion active; press STOP first\"}"); return; }
   drive(left, right, name);
   server.send(200, "text/plain", name);
 }
@@ -387,7 +400,12 @@ void setup() {
   pinMode(IN2, OUTPUT);
   pinMode(IN3, OUTPUT);
   pinMode(IN4, OUTPUT);
-  stopMotors();
+  controlQueue=xQueueCreate(8,sizeof(ControlRequest));scanQueue=xQueueCreate(12,sizeof(ScanRecord));
+  storageMutex=xSemaphoreCreateMutex();
+  if(!controlQueue || !scanQueue || !storageMutex){Serial.println("Control allocation failed");while(true)delay(1000);}
+  driveMotor(IN1,IN2,0);driveMotor(IN3,IN4,0);
+  turnPreferences.begin("turn-cal", false);
+  calibrationSaved=turnPreferences.getBool("valid",false);
   pinMode(LIDAR_PWM, OUTPUT);
   stopLidar("stopped");
   lidarSerial.setRxBufferSize(8192);
@@ -397,8 +415,10 @@ void setup() {
   Wire.begin(IMU_SDA, IMU_SCL);
   Wire.setClock(100000);
   imuValid = imuWrite(0x6B, 0x00); // wake the MPU6050
+  imuValid = imuWrite(0x1B, 0x00) && imuValid; // explicit +/-250 deg/s
+  imuValid = imuWrite(0x1A, 0x03) && imuValid; // 42 Hz gyro filter
+  Wire.setTimeOut(20);
   lastDhtMs = millis() - DHT_INTERVAL_MS;
-  lastImuMs = millis() - IMU_INTERVAL_MS;
 
   WiFi.mode(WIFI_STA);
   WiFi.setSleep(false);
@@ -419,6 +439,10 @@ void setup() {
     Serial.println(WiFi.softAPIP());
   }
 
+  onboard.previous=millis();
+  if(xTaskCreatePinnedToCore(controlTask,"rover-control",8192,nullptr,3,nullptr,1)!=pdPASS) {
+    Serial.println("Control task failed");while(true)delay(1000);
+  }
   server.on("/", HTTP_GET, [] { server.send_P(200, "text/html", PAGE); });
   server.on("/forward", HTTP_GET, [] { respondDrive(speedValue, speedValue, "forward"); });
   server.on("/backward", HTTP_GET, [] { respondDrive(-speedValue, -speedValue, "backward"); });
@@ -426,9 +450,10 @@ void setup() {
   server.on("/right", HTTP_GET, [] { respondDrive(speedValue, -speedValue, "right"); });
   server.on("/stop", HTTP_GET, [] { stopMotors(); server.send(200, "text/plain", "stopped"); });
   server.on("/api/capabilities", HTTP_GET, [] {
-    server.send(200, "application/json", "{\"signed_wheels\":true,\"lease_ms\":600}");
+    server.send(200, "application/json", "{\"signed_wheels\":true,\"lease_ms\":600,\"onboard_motion\":1,\"gyro_hz\":100,\"turn_lease_ms\":1500}");
   });
   server.on("/api/wheels", HTTP_POST, [] {
+    if (controlView().calActive || controlView().mode==OnboardMotion::Turn || controlView().mode==OnboardMotion::Hold) { server.send(409,"application/json","{\"error\":\"Automatic motion active; press STOP first\"}"); return; }
     int a = 0, b = 0;
     if (!server.hasArg("a") || !server.hasArg("b") ||
         !parseWheelDuty(server.arg("a"), a) || !parseWheelDuty(server.arg("b"), b)) {
@@ -444,57 +469,59 @@ void setup() {
     server.send(200, "text/plain", String(speedValue));
   });
   server.on("/api/status", HTTP_GET, [] {
-    server.send(200, "application/json", String("{\"motion\":\"") + motion + "\",\"speed\":" + speedValue + "}");
+    server.send(200, "application/json", String("{\"motion\":\"") + controlView().reason + "\",\"speed\":" + speedValue + "}");
   });
   server.on("/api/lidar/start", HTTP_POST, [] {
-    startLidar();
+    submit({LidarOn});
     server.send(200, "application/json", "{\"running\":true}");
   });
   server.on("/api/lidar/stop", HTTP_POST, [] {
-    stopLidar("stopped by user");
+    submit({LidarOff});
     server.send(200, "application/json", "{\"running\":false}");
   });
   server.on("/api/lidar/status", HTTP_GET, [] {
+    auto scan=scanView();auto v=controlView();
     int points = 0;
-    for (const uint16_t value : distanceMm) if (value != 0) ++points;
-    String json = String("{\"running\":") + (lidarRunning ? "true" : "false") +
-      ",\"rpm\":" + String(lidarRpm, 0) + ",\"pwm\":" + lidarDuty +
-      ",\"good\":" + goodPackets + ",\"bad\":" + badPackets +
-      ",\"bytes\":" + lidarBytes + ",\"headers\":" + lidarHeaders +
-      ",\"index_errors\":" + lidarIndexErrors +
-      ",\"points\":" + points + ",\"fault\":\"" + lidarFault + "\"}";
+    for (const uint16_t value : scan.mm) if (value != 0) ++points;
+    String json = String("{\"running\":") + (v.lidarRunning ? "true" : "false") +
+      ",\"rpm\":" + String(v.lidarRpm, 0) + ",\"pwm\":" + v.lidarDuty +
+      ",\"good\":" + v.good + ",\"bad\":" + v.bad +
+      ",\"bytes\":" + v.bytes + ",\"headers\":" + v.headers +
+      ",\"index_errors\":" + v.indexErrors +
+      ",\"points\":" + points + ",\"fault\":\"" + v.lidarFault + "\"}";
     server.send(200, "application/json", json);
   });
   server.on("/api/lidar/scan", HTTP_GET, [] {
+    auto scan=scanView();
     String json;
     json.reserve(2200);
     json = "[";
     for (int i = 0; i < 360; ++i) {
       if (i) json += ',';
-      json += distanceMm[i];
+      json += scan.mm[i];
     }
     json += ']';
     server.send(200, "application/json", json);
   });
   server.on("/api/lidar/revolution", HTTP_GET, [] {
-    if (!fullScanReady) {
+    auto scan=scanView();
+    if (!scan.seq) {
       server.send(503, "application/json", "{\"error\":\"no complete revolution yet\"}");
       return;
     }
-    server.send(200, "application/json", latestRecordJson);
+    server.send(200, "application/json", recordJson(scan));
   });
   server.on("/api/records/status", HTTP_GET, [] {
-    uint32_t bytes = 0;
-    if (storageReady) {
-      File log = SD_MMC.open(LOG_PATH, FILE_READ);
-      if (log) { bytes = log.size(); log.close(); }
-    }
+    portENTER_CRITICAL(&sharedMux);uint32_t bytes=logBytes;portEXIT_CRITICAL(&sharedMux);
     String json = String("{\"storage_ok\":") + (storageReady ? "true" : "false") +
       ",\"log_bytes\":" + bytes + ",\"boot_id\":" + bootId +
-      ",\"seq\":" + fullScanSeq + ",\"write_errors\":" + storageErrors + "}";
+      ",\"seq\":" + scanView().seq + ",\"dropped_log_scans\":" + controlView().dropped + ",\"write_errors\":" + storageErrors + "}";
     server.send(200, "application/json", json);
   });
   server.on("/api/records", HTTP_GET, [] {
+    if (controlView().moving || controlView().calActive) { server.send(503,"application/json","{\"error\":\"Log download paused while motors are active\"}"); return; }
+    StorageLock lock(0);
+    if(!lock.held){server.send(503,"application/json","{\"error\":\"Log writer busy; retry later\"}");return;}
     if (!storageReady) {
       server.send(503, "application/json", "{\"error\":\"microSD unavailable\"}");
       return;
@@ -537,6 +564,10 @@ void setup() {
   server.on("/api/imu", HTTP_GET, [] {
     server.send(200, "application/json", imuJson());
   });
+  setupControlRoutes();
+  if(xTaskCreatePinnedToCore(storageTask,"rover-storage",8192,nullptr,1,nullptr,0)!=pdPASS) {
+    Serial.println("Storage task failed");while(true)delay(1000);
+  }
   server.begin();
   Serial.println("Wheel pins: IN1=GPIO1, IN2=GPIO2, IN3=GPIO41, IN4=GPIO42");
   Serial.println("LiDAR: TX->GPIO14, driver gate->GPIO47, shared GND, regulated 5V");
@@ -545,17 +576,20 @@ void setup() {
 }
 
 void loop() {
-  if (moving && millis() - lastDriveMs > DRIVE_LEASE_MS) stopMotors();
-  if (WiFi.getMode() == WIFI_STA && WiFi.status() != WL_CONNECTED) {
-    stopMotors();
-    if (millis() - lastWifiReconnectMs > 2000) {
-      lastWifiReconnectMs = millis();
-      WiFi.reconnect();
-    }
-  }
   server.handleClient();
-  pollLidar();
-  pollSensors();
-  if (moving && millis() - lastDriveMs > DRIVE_LEASE_MS) stopMotors();
-  delay(2);
+  auto v=controlView();
+  static uint32_t savedVersion=0;
+  if(v.calVersion!=savedVersion) {
+    savedVersion=v.calVersion;
+    turnPreferences.putBool("valid",false);
+    bool ok=turnPreferences.putFloat("bias",v.bias)==sizeof(float);
+    ok &= turnPreferences.putFloat("left",v.leftRate)==sizeof(float);
+    ok &= turnPreferences.putFloat("right",v.rightRate)==sizeof(float);
+    ok &= turnPreferences.putInt("sign",v.polarity)==sizeof(int);
+    calibrationSaved=ok && turnPreferences.putBool("valid",true)==sizeof(bool);
+  }
+  if(WiFi.getMode()==WIFI_STA && WiFi.status()!=WL_CONNECTED && millis()-lastWifiReconnectMs>2000){lastWifiReconnectMs=millis();WiFi.reconnect();}
+  delay(1);
 }
+
+#include "ControlRuntime.h"

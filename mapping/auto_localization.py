@@ -21,7 +21,7 @@ from std_srvs.srv import Empty
 from tf2_ros import Buffer, TransformListener, TransformException
 
 from atomic_snapshot import replace_with_retry
-from localization_quality import MapMatcher, quality_reason
+from localization_quality import MapMatcher, quality_reason, AlignmentHistory
 
 
 class AutoLocalization(Node):
@@ -49,6 +49,7 @@ class AutoLocalization(Node):
         self.scan_at = self.pose_at = 0.
         self.xy_std = self.yaw_std = math.inf
         self.count = 0
+        self.alignment = AlignmentHistory()
         self.last_stamp = None
         self.last_map_odom = None
         self.stable_since = None
@@ -84,6 +85,7 @@ class AutoLocalization(Node):
             self.nomotion_future = self.nomotion.call_async(Empty.Request())
 
     def relocalize(self, request, response):
+        self.alignment.reset()
         self.count, self.stable_since = 0, None
         self.pose_at = 0.
         self.xy_std = self.yaw_std = math.inf
@@ -97,6 +99,7 @@ class AutoLocalization(Node):
         pose, fit = None, {}
         reason = 'Waiting for live LiDAR and AMCL'
         selected_stamp = None
+        transport_gap = False
         for scan, received_at in reversed(self.scans):
             try:
                 tf = self.buffer.lookup_transform('map', 'base_link', Time.from_msg(scan.header.stamp))
@@ -110,6 +113,8 @@ class AutoLocalization(Node):
                 fit = self.matcher.score(points, pose)
                 reason = quality_reason(fit, self.xy_std, self.yaw_std,
                                         now-received_at, now-self.pose_at)
+                transport_gap = (reason == 'Waiting for fresh LiDAR' and
+                    quality_reason(fit,self.xy_std,self.yaw_std,0.,now-self.pose_at) is None)
                 correction = self.buffer.lookup_transform('map','odom',Time.from_msg(scan.header.stamp))
                 t,qc = correction.transform.translation,correction.transform.rotation
                 cyaw = math.atan2(2*(qc.w*qc.z+qc.x*qc.y),1-2*(qc.y*qc.y+qc.z*qc.z))
@@ -119,20 +124,16 @@ class AutoLocalization(Node):
                     da = abs(math.atan2(math.sin(cyaw-old[2]),math.cos(cyaw-old[2])))
                     if math.dist(current[:2],old[:2]) > .25 or da > .20:
                         reason = 'Pose correction detected; confirming alignment before motion'
+                        transport_gap = False
                 self.last_map_odom = current
                 selected_stamp = (scan.header.stamp.sec, scan.header.stamp.nanosec)
                 break
             except TransformException:
                 reason = 'Searching the saved map; waiting for pose transform'
         stamp = selected_stamp
-        if reason:
-            self.count, self.stable_since = 0, None
-        elif stamp != self.last_stamp:
-            self.count += 1
-            if self.stable_since is None:
-                self.stable_since = now
+        ready = self.alignment.update(now,stamp,reason,transport_gap)
+        self.count,self.stable_since = self.alignment.count,self.alignment.since
         self.last_stamp = stamp
-        ready = not reason and self.count >= 15 and now-self.stable_since >= 3.
         self.write(ready, reason or ('Localized: scan matches the saved map' if ready
                                    else 'Confirming scan agreement across fresh scans'), fit, pose)
 

@@ -1,0 +1,75 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="1160" viewBox="0 0 1500 1160" role="img" aria-labelledby="title desc"><title id="title">PitDivers two L293D GPIO wiring</title><desc id="desc">Two L293D drivers share six ESP32-S3 GPIO signals. Driver one powers front left and right motors. Driver two powers rear left and right motors. Each motor has separate outputs. Pin assignments match the current motor-only firmware.</desc><style>text{font-family:Arial,Helvetica,sans-serif}</style>
+<rect x="0" y="0" width="1500" height="1160" rx="12" fill="#f3f6fa"/>
+<text x="45" y="57" font-size="32" fill="#18324b">PITDIVERS / TWO MOTOR DRIVERS</text>
+<text x="45" y="92" font-size="22" fill="#18324b">ESP32-S3 + 2 × L293D • 4 motors • shared left / right control</text>
+<rect x="45" y="115" width="1410" height="55" rx="12" fill="#dfeaf7"/>
+<text x="65" y="149" font-size="20" fill="#18324b">GPIO = ESP32 board label. Pin = physical L293D IC pin. Connect each GPIO to BOTH drivers.</text>
+<rect x="45" y="195" width="450" height="65" rx="12" fill="#18324b"/>
+<text x="65" y="235" font-size="23" fill="#ffffff">ESP32-S3 GPIO</text>
+<rect x="525" y="195" width="450" height="65" rx="12" fill="#18324b"/>
+<text x="545" y="235" font-size="23" fill="#ffffff">DRIVER 1 / FRONT</text>
+<rect x="1005" y="195" width="450" height="65" rx="12" fill="#18324b"/>
+<text x="1025" y="235" font-size="23" fill="#ffffff">DRIVER 2 / REAR</text>
+<rect x="45" y="278" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="525" y="278" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="1005" y="278" width="450" height="47" rx="12" fill="#ffffff"/>
+<text x="65" y="308" font-size="22" fill="#2563a5">GPIO 1</text>
+<text x="545" y="308" font-size="22" fill="#2563a5">IN1 · pin 2</text>
+<text x="1025" y="308" font-size="22" fill="#2563a5">IN1 · pin 2</text>
+<path d="M495 302 H525 M975 302 H1005" stroke="#2563a5" stroke-width="4"/>
+<rect x="45" y="337" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="525" y="337" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="1005" y="337" width="450" height="47" rx="12" fill="#ffffff"/>
+<text x="65" y="367" font-size="22" fill="#2563a5">GPIO 14</text>
+<text x="545" y="367" font-size="22" fill="#2563a5">IN2 · pin 7</text>
+<text x="1025" y="367" font-size="22" fill="#2563a5">IN2 · pin 7</text>
+<path d="M495 361 H525 M975 361 H1005" stroke="#2563a5" stroke-width="4"/>
+<rect x="45" y="396" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="525" y="396" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="1005" y="396" width="450" height="47" rx="12" fill="#ffffff"/>
+<text x="65" y="426" font-size="22" fill="#8055a6">GPIO 41 · PWM</text>
+<text x="545" y="426" font-size="22" fill="#8055a6">ENA · pin 1</text>
+<text x="1025" y="426" font-size="22" fill="#8055a6">ENA · pin 1</text>
+<path d="M495 420 H525 M975 420 H1005" stroke="#8055a6" stroke-width="4"/>
+<rect x="45" y="455" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="525" y="455" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="1005" y="455" width="450" height="47" rx="12" fill="#ffffff"/>
+<text x="65" y="485" font-size="22" fill="#07816d">GPIO 21</text>
+<text x="545" y="485" font-size="22" fill="#07816d">IN3 · pin 10</text>
+<text x="1025" y="485" font-size="22" fill="#07816d">IN3 · pin 10</text>
+<path d="M495 479 H525 M975 479 H1005" stroke="#07816d" stroke-width="4"/>
+<rect x="45" y="514" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="525" y="514" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="1005" y="514" width="450" height="47" rx="12" fill="#ffffff"/>
+<text x="65" y="544" font-size="22" fill="#07816d">GPIO 47</text>
+<text x="545" y="544" font-size="22" fill="#07816d">IN4 · pin 15</text>
+<text x="1025" y="544" font-size="22" fill="#07816d">IN4 · pin 15</text>
+<path d="M495 538 H525 M975 538 H1005" stroke="#07816d" stroke-width="4"/>
+<rect x="45" y="573" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="525" y="573" width="450" height="47" rx="12" fill="#ffffff"/>
+<rect x="1005" y="573" width="450" height="47" rx="12" fill="#ffffff"/>
+<text x="65" y="603" font-size="22" fill="#b06417">GPIO 42 · PWM</text>
+<text x="545" y="603" font-size="22" fill="#b06417">ENB · pin 9</text>
+<text x="1025" y="603" font-size="22" fill="#b06417">ENB · pin 9</text>
+<path d="M495 597 H525 M975 597 H1005" stroke="#b06417" stroke-width="4"/>
+<text x="45" y="672" font-size="23" fill="#18324b">MOTOR OUTPUTS / keep each motor on its own output pair</text>
+<rect x="45" y="695" width="690" height="130" rx="12" fill="#e1eceb"/>
+<text x="65" y="728" font-size="22" fill="#18324b">Driver 1 · front motors</text>
+<text x="65" y="765" font-size="19" fill="#18324b">Front LEFT → OUT1 pin 3 + OUT2 pin 6</text>
+<text x="65" y="798" font-size="19" fill="#18324b">Front RIGHT → OUT3 pin 11 + OUT4 pin 14</text>
+<rect x="765" y="695" width="690" height="130" rx="12" fill="#e1eceb"/>
+<text x="785" y="728" font-size="22" fill="#18324b">Driver 2 · rear motors</text>
+<text x="785" y="765" font-size="19" fill="#18324b">Rear LEFT → OUT1 pin 3 + OUT2 pin 6</text>
+<text x="785" y="798" font-size="19" fill="#18324b">Rear RIGHT → OUT3 pin 11 + OUT4 pin 14</text>
+<rect x="45" y="850" width="1410" height="150" rx="12" fill="#ffffff"/>
+<text x="65" y="885" font-size="23" fill="#18324b">POWER / repeat for each L293D</text>
+<text x="65" y="920" font-size="19" fill="#18324b">Pin 16 (VCC1) → regulated +5V logic</text>
+<text x="65" y="954" font-size="19" fill="#18324b">Pin 8 (VCC2) → motor battery +</text>
+<text x="745" y="920" font-size="19" fill="#18324b">Pins 4, 5, 12, 13 → common GND</text>
+<text x="745" y="954" font-size="19" fill="#18324b">Join ESP32 GND + both driver grounds + battery −.</text>
+<text x="65" y="983" font-size="17" fill="#18324b">Per IC: 100 nF from pin 16 to GND and pin 8 to GND; 10 kΩ from each enable (pins 1, 9) to GND.</text>
+<text x="45" y="1040" font-size="19" fill="#18324b">Shared controls: both left motors move together; both right motors move together. Do not join driver outputs.</text>
+<text x="45" y="1072" font-size="19" fill="#ac3535">Motor-only pin map: GPIO 14 / 21 / 41 / 42 conflict with the existing sensor wiring.</text>
+<text x="45" y="1104" font-size="18" fill="#18324b">Matches PitDivers_Motor_Web/motor_control.cpp. Swap a motor’s two leads if its wheel turns the wrong way.</text>
+<text x="45" y="1135" font-size="17" fill="#526678">L293D DIP-16 numbering: top view, notch up, pin 1 upper left; count down left then up right.</text>
+</svg>

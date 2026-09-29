@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="color-scheme" content="dark" />
     <title>PitDivers • Rover Vision Console</title>
-    <link rel="stylesheet" href="/assets/styles.css?v=20260827-10" />
+    <link rel="stylesheet" href="/assets/styles.css?v=20260929-4" />
     <script type="module" src="/assets/vendor/model-viewer.min.js"></script>
   </head>
   <body>
@@ -17,11 +17,23 @@
         </div>
 
         <nav class="nav" aria-label="Main navigation">
-          <button class="nav-item active" data-tab="live">
+          <button class="nav-item active" data-tab="expedition">
+            <span class="nav-icon">◎</span><span>Expedition</span>
+          </button>
+          <button class="nav-item" data-tab="live">
             <span class="nav-icon">◉</span><span>Live</span><i id="liveNavDot"></i>
+          </button>
+          <button class="nav-item" data-tab="setup">
+            <span class="nav-icon">⚙</span><span>Setup</span>
+          </button>
+          <button class="nav-item" data-tab="control">
+            <span class="nav-icon">✣</span><span>Drive</span><i id="driveNavDot"></i>
           </button>
           <button class="nav-item" data-tab="captures">
             <span class="nav-icon">▦</span><span>Captures</span><b id="captureBadge">0</b>
+          </button>
+          <button class="nav-item" data-tab="reports">
+            <span class="nav-icon">▤</span><span>Reports</span>
           </button>
           <button class="nav-item" data-tab="reconstructions">
             <span class="nav-icon">◇</span><span>3D Models</span><b id="runBadge">0</b>
@@ -41,8 +53,8 @@
       <main>
         <header class="topbar">
           <div>
-            <p class="eyebrow" id="pageEyebrow">OPERATIONS</p>
-            <h1 id="pageTitle">Live inspection</h1>
+            <p class="eyebrow" id="pageEyebrow">FIELD SESSION</p>
+            <h1 id="pageTitle">Rover expedition</h1>
           </div>
           <div class="top-actions">
             <span class="clock" id="clock"></span>
@@ -50,15 +62,76 @@
           </div>
         </header>
 
-        <section class="page active" id="page-live">
+        <section class="page active" id="page-expedition">
+          <div class="expedition-head panel"><div><p class="eyebrow">FIELD SESSION</p><h2>Rover expedition</h2><p>Record camera, LiDAR and sensors together. Build the inspection report when the run ends.</p></div><div class="expedition-actions"><button class="button primary" id="expeditionStart">Start expedition</button><button class="button danger" id="expeditionStop" disabled>Stop &amp; build report</button></div></div>
+          <div class="expedition-telemetry panel" aria-label="Live rover telemetry">
+            <span>Temperature <strong id="expeditionTemperature">—</strong></span>
+            <span>Humidity <strong id="expeditionHumidity">—</strong></span>
+            <span>IMU roll <strong id="expeditionRoll">—</strong></span>
+            <span>pitch <strong id="expeditionPitch">—</strong></span>
+            <span>yaw <strong id="expeditionYaw">—</strong></span>
+            <span>accel XYZ <strong id="expeditionAccel">—</strong></span>
+            <span>gyro XYZ <strong id="expeditionGyro">—</strong></span>
+          </div>
+          <div class="expedition-feeds">
+            <article class="panel"><div class="card-heading"><div><p class="eyebrow">CAMERA</p><h2>Live footage</h2></div><span id="expeditionCameraState">Offline</span></div><div class="expedition-frame"><img id="expeditionCamera" alt="Live expedition camera" /><span id="expeditionCameraEmpty">Camera starts with the expedition.</span></div></article>
+            <article class="panel"><div class="card-heading"><div><p class="eyebrow">LIDAR</p><h2>Live map</h2></div><span id="expeditionMapState">Waiting</span></div><button class="expedition-map-button" id="expeditionMapOpen" type="button" aria-label="Open full LiDAR map"><canvas id="expeditionMap" width="500" height="280"></canvas><span>Click to open full map ↗</span></button></article>
+          </div>
+          <div class="expedition-lower">
+            <article class="panel expedition-drive"><div class="card-heading"><div><p class="eyebrow">MANUAL DRIVE</p><h2>Rover controls</h2></div><span id="expeditionDriveState">Disconnected</span></div><div class="rover-drive" aria-label="Hold a direction to drive"><button class="drive-button forward" data-rover-command="forward" type="button" disabled aria-label="Expedition forward"><kbd>W</kbd><span>▲</span></button><button class="drive-button left" data-rover-command="left" type="button" disabled aria-label="Expedition left"><kbd>A</kbd><span>◀</span></button><button class="drive-button stop" data-rover-command="stop" type="button" disabled aria-label="Expedition stop"><span>STOP</span></button><button class="drive-button right" data-rover-command="right" type="button" disabled aria-label="Expedition right"><kbd>D</kbd><span>▶</span></button><button class="drive-button backward" data-rover-command="backward" type="button" disabled aria-label="Expedition backward"><kbd>S</kbd><span>▼</span></button></div><button class="button rover-estop" id="expeditionEmergencyStop" type="button">Emergency stop</button><small>Hold to drive; releasing stops the rover. Speed follows the Drive page.</small></article>
+            <article class="panel expedition-options"><div class="card-heading"><div><p class="eyebrow">REPORT</p><h2>Inspection output</h2></div></div><div class="field"><label for="expeditionAsset">Area or asset</label><input id="expeditionAsset" placeholder="West drift / fan A" /></div><div class="field"><label for="expeditionNotes">Operator notes</label><textarea id="expeditionNotes" rows="3" placeholder="Inspection purpose and observed conditions"></textarea></div><div class="field"><label for="expeditionOpenRouterKey">OpenRouter API key</label><input id="expeditionOpenRouterKey" type="password" autocomplete="off" placeholder="Used once; not saved" /></div><div class="field"><label for="expeditionModel">Vision model</label><input id="expeditionModel" list="expeditionModels" value="google/gemini-2.5-flash" /><datalist id="expeditionModels"><option value="google/gemini-2.5-flash"><option value="openai/gpt-4.1-mini"><option value="anthropic/claude-sonnet-4"></datalist></div><p id="expeditionStatus" role="status">Ready to start. Set the ESP addresses in Setup first.</p><a id="expeditionReportLink" class="button primary" hidden target="_blank" rel="noopener">Open report</a></article>
+          </div>
+        </section>
+        <dialog id="expeditionMapDialog" class="modal expedition-map-dialog"><div class="modal-header"><h2>Full LiDAR map</h2><button class="icon-button modal-close" aria-label="Close">×</button></div><iframe title="Full LiDAR room map" src="http://127.0.0.1:8767/"></iframe></dialog>
+
+        <section class="page" id="page-setup">
+          <article class="panel" style="padding:24px">
+            <p class="eyebrow">DEVICE NETWORK</p><h2>ESP connections</h2>
+            <p>The camera is on its own ESP. The current wheel and sensor firmware responds at 192.168.0.99; these addresses can be changed independently. The laptop must be on the rover Wi-Fi.</p>
+            <details class="setup-device" open><summary>Camera ESP</summary>
+              <div class="field"><label for="setupCameraUrl">Camera stream</label><input id="setupCameraUrl" value="http://192.168.0.119/jpg" spellcheck="false" /></div>
+              <button class="button secondary" id="setupCameraSave" type="button">Save camera address</button>
+              <small id="setupCameraStatus">Used by Live video capture.</small>
+            </details>
+            <details class="setup-device" open><summary>Wheel controller ESP</summary>
+              <div class="field"><label for="setupWheelUrl">Wheels and drive commands</label><input id="setupWheelUrl" value="http://192.168.0.99" spellcheck="false" /></div>
+              <button class="button secondary" id="setupWheelSave" type="button">Save wheel address</button>
+              <small id="setupWheelStatus">Used by Drive, gamepad, and autonomous commands.</small>
+            </details>
+            <details class="setup-device" open><summary>Sensor ESP</summary>
+              <div class="field"><label for="setupSensorUrl">Temperature, humidity, distance, and IMU</label><input id="setupSensorUrl" value="http://192.168.0.99" spellcheck="false" /></div>
+              <button class="button secondary" id="setupSensorSave" type="button">Save sensor address</button>
+              <small id="setupSensorStatus">Reads /api/environment and /api/imu from this ESP. Reconnect the camera after changing it to update recording.</small>
+            </details>
+            <details class="setup-device"><summary>DA3 PC over Tailscale</summary>
+              <div class="field"><label for="setupDa3Url">PC Tailscale Serve URL</label><input id="setupDa3Url" type="url" placeholder="https://your-pc.your-tailnet.ts.net" spellcheck="false" /></div>
+              <div class="field"><label for="setupDa3Token">Shared transfer token</label><input id="setupDa3Token" type="password" autocomplete="off" placeholder="Same token configured on the PC" /></div>
+              <button class="button secondary" id="setupDa3Save" type="button">Connect DA3 PC</button>
+              <small id="setupDa3Status">PC must run the dashboard and Tailscale Serve. The token stays in laptop server memory for this session.</small>
+            </details>
+          </article>
+        </section>
+
+        <section class="page" id="page-live">
           <div class="connection-panel panel">
             <div class="field wide">
               <label for="streamUrl">ESP32 stream URL</label>
-              <input id="streamUrl" value="http://192.168.0.69:81/stream" spellcheck="false" />
+              <input id="streamUrl" value="http://192.168.0.119/jpg" spellcheck="false" />
             </div>
             <div class="field">
-              <label for="liveModel">Live model</label>
+              <label for="liveModel">Live processing</label>
               <select id="liveModel"></select>
+            </div>
+            <div class="field compact">
+              <label for="cameraProfile">Camera mode</label>
+              <select id="cameraProfile">
+                <option value="quality">Quality · 640×480</option>
+                <option value="vio">VIO fast · 320×240</option>
+              </select>
+            </div>
+            <div class="field compact">
+              <label for="cameraRotation">Orientation</label>
+              <select id="cameraRotation"><option value="180" selected>Rotate 180°</option><option value="0">Normal</option></select>
             </div>
             <div class="field compact">
               <label for="processRes">Process resolution</label>
@@ -72,6 +145,14 @@
               <label for="inferenceFps">Depth FPS</label>
               <input id="inferenceFps" type="number" value="10" min="1" max="30" step="1" />
             </div>
+            <div class="field compact">
+              <label for="semanticEnabled">Live semantics</label>
+              <select id="semanticEnabled"><option value="true" selected>ON · tracked objects</option><option value="false">OFF</option></select>
+            </div>
+            <div class="field compact">
+              <label for="semanticFps">Semantic FPS</label>
+              <input id="semanticFps" type="number" value="1" min="0.2" max="10" step="0.2" />
+            </div>
             <button class="button primary" id="connectButton">Connect stream</button>
           </div>
 
@@ -79,6 +160,12 @@
             <div class="live-state">
               <span class="status-dot" id="liveStatusDot"></span>
               <div><strong id="liveStatusText">Disconnected</strong><small id="liveStatusDetail">Enter the ESP32 URL to begin</small></div>
+            </div>
+            <div class="feed-visibility" aria-label="Visible camera feeds">
+              <small>VISIBLE FEEDS</small>
+              <label class="switch-control"><input id="showRawFeed" type="checkbox" checked /><span></span><b>Camera</b></label>
+              <label class="switch-control"><input id="showDepthFeed" type="checkbox" checked /><span></span><b>Depth</b></label>
+              <label class="switch-control"><input id="showSemanticFeed" type="checkbox" checked /><span></span><b>Objects</b></label>
             </div>
             <div class="record-controls">
               <div class="field name-field">
@@ -93,12 +180,13 @@
                 <input id="stableOnly" type="checkbox" />
                 <span><strong>Stable only</strong><small>MPU-gated frames</small></span>
               </label>
+              <span class="recording-timer" id="recordingTimer" hidden aria-live="off"><i></i><time>00:00</time></span>
               <button class="button record" id="recordButton" disabled><span></span>Start recording</button>
             </div>
           </div>
 
           <div class="stream-grid">
-            <article class="stream-card panel">
+            <article class="stream-card panel" id="rawStreamCard">
               <div class="card-heading">
                 <div><p class="eyebrow">CAMERA 01</p><h2>Live stream</h2></div>
                 <div class="camera-heading-actions">
@@ -122,7 +210,7 @@
               </div>
             </article>
 
-            <article class="stream-card panel">
+            <article class="stream-card panel" id="depthStreamCard">
               <div class="card-heading">
                 <div><p class="eyebrow">DA3 DEPTH</p><h2>Live depth output</h2></div>
                 <span class="pill accent" id="depthModelPill">DA3 Base</span>
@@ -142,7 +230,18 @@
                   <div><span>MAX DEPTH</span><strong id="depthMax" class="far">—</strong><small>Farthest · relative</small></div>
                   <div><span>CONFIDENCE</span><strong id="depthConfidence">—</strong><small id="depthConfidenceNote">DA3 relative confidence</small></div>
                 </div>
-                <div class="empty-stream"><span>◇</span><strong>Depth idle</strong><small>The model loads after the stream connects</small></div>
+                <div class="empty-stream"><span>◇</span><strong id="depthEmptyTitle">Depth idle</strong><small id="depthEmptyDetail">The model loads after the stream connects</small></div>
+              </div>
+            </article>
+            <article class="stream-card panel semantic-live-card" id="semanticStreamCard">
+              <div class="card-heading">
+                <div><p class="eyebrow">YOLOE SEMANTICS</p><h2>Live object overlay</h2></div>
+                <span class="pill accent" id="semanticModelPill">OFF</span>
+              </div>
+              <div class="stream-frame" id="semanticFrameWrap">
+                <img id="semanticStream" alt="Live semantic object overlay" />
+                <div class="semantic-live-note"><strong>VIEW-LOCAL TRACKS</strong><small>Stable IDs in this camera session · pose not anchored</small></div>
+                <div class="empty-stream"><span>◎</span><strong id="semanticEmptyTitle">Semantic idle</strong><small id="semanticEmptyDetail">Enable live semantics before connecting</small></div>
               </div>
             </article>
           </div>
@@ -156,9 +255,10 @@
           </section>
 
           <div class="metrics-grid">
-            <div class="metric panel"><span>CAMERA FPS</span><strong id="cameraFps">—</strong><small>Incoming MJPEG</small></div>
+            <div class="metric panel"><span>CAMERA FPS</span><strong id="cameraFps">—</strong><small>Incoming frames</small></div>
             <div class="metric panel"><span>DA3 FPS</span><strong id="depthFps">—</strong><small>Processed frames</small></div>
             <div class="metric panel"><span>INFERENCE</span><strong id="inferenceTime">—</strong><small>Per depth frame</small></div>
+            <div class="metric panel"><span>OBJECT TRACKS</span><strong id="semanticObjectsCount">—</strong><small id="semanticPoseState">View-local · pose pending</small></div>
             <div class="metric panel"><span>KEYFRAMES</span><strong id="framesSaved">0</strong><small id="recordingSession">Not recording</small></div>
           </div>
 
@@ -286,12 +386,246 @@
           </section>
         </section>
 
+        <section class="page" id="page-control">
+          <div class="drive-layout">
+            <article class="drive-vision panel">
+              <div class="card-heading drive-vision-head">
+                <div><p class="eyebrow">DRIVER VIEW</p><h2>Camera + object detection</h2></div>
+                <div class="drive-view-actions">
+                  <label class="switch-control"><input id="driveDetection" type="checkbox" checked /><span></span><b>Detection</b></label>
+                  <select id="driveViewSource" aria-label="Driver camera source"><option value="enhanced">Enhanced</option><option value="original">Original</option></select>
+                  <span class="pill accent" id="driveVisionState">Camera offline</span>
+                </div>
+              </div>
+              <div class="drive-camera-frame" id="driveCameraWrap">
+                <img id="driveCamera" alt="Rover driver camera with optional object detection" />
+                <div class="empty-stream"><span>◉</span><strong>Driver camera offline</strong><small>Connect the camera from the Live page</small></div>
+              </div>
+              <div class="enhancement-bar">
+                <div class="field"><label for="lowLightMode">Low-light processing</label><select id="lowLightMode"><option value="off">Off · original</option><option value="fast" selected>Fast · temporal</option><option value="ai">AI · SCUNet</option></select></div>
+                <div class="field enhancement-strength"><label for="lowLightStrength">Strength <b id="lowLightStrengthValue">55%</b></label><input id="lowLightStrength" type="range" min="0" max="100" step="5" value="55" /></div>
+                <div class="enhancement-state"><span class="status-dot" id="enhancementStatusDot"></span><span><strong id="enhancementStatus">Fast enhancement</strong><small id="enhancementDetail">Temporal denoise + adaptive low-light correction</small></span></div>
+              </div>
+            </article>
+
+            <section class="rover-control panel" aria-labelledby="roverControlTitle">
+              <div class="rover-control-head">
+                <div><p class="eyebrow">MOTION ESP</p><h2 id="roverControlTitle">Rover controls</h2></div>
+                <div class="rover-control-state"><span class="status-dot" id="roverStatusDot"></span><span><strong id="roverStatusText">Not connected</strong><small id="roverStatusDetail">Connect the separate motion controller</small></span></div>
+              </div>
+              <div class="rover-control-body">
+                <div class="rover-connection">
+                  <div class="field"><label for="roverUrl">Rover controller URL</label><input id="roverUrl" value="http://192.168.0.99" spellcheck="false" /><small>Use the IP printed by the wheel ESP.</small></div>
+                  <button class="button secondary" id="roverConnectButton" type="button">Connect controls</button>
+                </div>
+                <div class="rover-drive" aria-label="Hold a direction to drive">
+                  <button class="drive-button forward" data-rover-command="forward" type="button" disabled aria-label="Drive forward"><kbd>W</kbd><span>▲</span></button>
+                  <button class="drive-button left" data-rover-command="left" type="button" disabled aria-label="Turn left"><kbd>A</kbd><span>◀</span></button>
+                  <button class="drive-button stop" data-rover-command="stop" type="button" disabled aria-label="Stop rover"><span>STOP</span></button>
+                  <button class="drive-button right" data-rover-command="right" type="button" disabled aria-label="Turn right"><kbd>D</kbd><span>▶</span></button>
+                  <button class="drive-button backward" data-rover-command="backward" type="button" disabled aria-label="Drive backward"><kbd>S</kbd><span>▼</span></button>
+                </div>
+                <div class="rover-speed">
+                  <div class="rover-speed-label"><span>Drive speed</span><strong id="roverSpeedValue">180</strong></div>
+                  <input id="roverSpeed" type="range" min="80" max="255" step="5" value="180" />
+                  <small>Hold buttons or W/A/S/D · releasing sends STOP</small>
+                  <button class="button rover-estop" id="roverEmergencyStop" type="button" disabled>Emergency stop</button>
+                </div>
+              </div>
+            </section>
+
+            <section class="control-automation-grid">
+              <article class="automation-panel panel">
+                <div class="card-heading">
+                  <div><p class="eyebrow">PC GAMEPAD</p><h2>Controller bridge</h2></div>
+                  <span class="pill" id="gamepadStatus">Stopped</span>
+                </div>
+                <div class="automation-body">
+                  <div class="field"><label for="controlApiKey">Motion ESP API key</label><input id="controlApiKey" type="password" autocomplete="off" placeholder="Same key as the motion firmware" /></div>
+                  <p>The dashboard runs the project PowerShell bridge in the background. Xbox/XInput controllers are detected automatically.</p>
+                  <div class="automation-actions">
+                    <button class="button primary" id="gamepadStartButton" type="button">Start controller</button>
+                    <button class="button danger" id="gamepadStopButton" type="button">Stop controller</button>
+                  </div>
+                </div>
+              </article>
+
+              <article class="automation-panel panel">
+                <div class="card-heading">
+                  <div><p class="eyebrow">LOCAL AUTONOMY</p><h2>Explore or find</h2></div>
+                  <span class="pill" id="autonomyStatus">Idle</span>
+                </div>
+                <div class="automation-body">
+                  <div class="automation-fields">
+                    <div class="field"><label for="autonomyMission">AI mission</label><select id="autonomyMission"><option value="explore" selected>Explore room</option><option value="find">Find object</option></select></div>
+                    <div class="field"><label for="autonomyTarget">Target object (Find mode)</label><input id="autonomyTarget" placeholder="shoe" disabled /></div>
+                    <div class="field"><label for="autonomySpeed">AI speed</label><input id="autonomySpeed" type="number" min="60" max="220" value="180" /></div>
+                    <div class="field"><label for="ollamaModel">Ollama vision model</label><input id="ollamaModel" list="ollamaModels" value="llama3.2-vision:11b" /><datalist id="ollamaModels"></datalist></div>
+                  </div>
+                  <label class="switch-control autonomy-llama"><input id="autonomyUseLlama" type="checkbox" /><span></span><b>Use Ollama vision fallback (Gemma/Llama)</b></label>
+                  <input id="ollamaUrl" type="hidden" value="http://127.0.0.1:11434" />
+                  <p id="autonomyDetail">Explore uses DA3 depth and adds sonar when available. Without sonar it uses shorter forward leases; keep Emergency Stop ready.</p>
+                  <div class="automation-actions">
+                    <button class="button primary" id="autonomyStartButton" type="button">Explore room</button>
+                    <button class="button secondary" id="autonomyConsoleButton" type="button">View console</button>
+                    <button class="button danger" id="autonomyStopButton" type="button">Stop AI</button>
+                  </div>
+                </div>
+              </article>
+            </section>
+          </div>
+        </section>
+
+        <section class="page" id="page-mission">
+          <div class="section-intro mission-intro">
+            <div>
+              <p>Draw a metric operating area and the route the rover should follow.</p>
+              <small>Click to add points · drag route waypoints to refine them · double-click to finish an obstacle.</small>
+            </div>
+            <div class="mission-file-actions">
+              <select id="mapPicker" aria-label="Saved mission map"><option value="">Unsaved map</option></select>
+              <button class="button secondary" type="button" id="newMapButton">＋ New</button>
+              <button class="button secondary" type="button" id="importMapButton">Import run</button>
+              <input id="importMapFile" type="file" accept="application/json,.json" hidden />
+              <button class="button secondary" type="button" id="exportMapButton">Export JSON</button>
+              <button class="button primary" type="button" id="saveMapButton">Save map</button>
+            </div>
+          </div>
+
+          <div class="mission-layout">
+            <aside class="mission-controls panel">
+              <div class="mission-panel-head"><p class="eyebrow">MAP SETUP</p><h2>Drawing tools</h2></div>
+              <div class="field"><label for="mapName">Mission name</label><input id="mapName" value="Untitled mission" /></div>
+              <div class="mission-dimension-grid">
+                <div class="field"><label for="mapWidth">Width · m</label><input id="mapWidth" type="number" min="1" max="10000" step="0.5" value="10" /></div>
+                <div class="field"><label for="mapHeight">Height · m</label><input id="mapHeight" type="number" min="1" max="10000" step="0.5" value="8" /></div>
+                <div class="field"><label for="mapGrid">Grid · m</label><input id="mapGrid" type="number" min="0.1" max="100" step="0.1" value="0.5" /></div>
+                <div class="field"><label for="roverRadius">Rover radius · m</label><input id="roverRadius" type="number" min="0.05" max="5" step="0.01" value="0.18" /></div>
+              </div>
+
+              <div class="mission-tool-grid" role="toolbar" aria-label="Map drawing tools">
+                <button class="map-tool active" type="button" data-map-tool="select"><span>⌖</span>Select / drag</button>
+                <button class="map-tool" type="button" data-map-tool="route"><span>⌁</span>Add route</button>
+                <button class="map-tool" type="button" data-map-tool="boundary"><span>◇</span>Boundary</button>
+                <button class="map-tool" type="button" data-map-tool="obstacle"><span>⬡</span>Obstacle</button>
+              </div>
+              <button class="button secondary full" type="button" id="finishShapeButton">Finish current shape</button>
+
+              <div class="mission-action-editor">
+                <p class="eyebrow">WAYPOINT ACTION</p>
+                <div class="field"><label for="waypointAction">Action at selected waypoint</label>
+                  <select id="waypointAction">
+                    <option value="take_photo">Take photo</option>
+                    <option value="temperature">Read temperature</option>
+                    <option value="humidity">Read humidity</option>
+                    <option value="distance_scan">Distance scan</option>
+                    <option value="vibration_scan">Vibration scan</option>
+                    <option value="wait">Wait</option>
+                    <option value="return_home">Return home</option>
+                  </select>
+                </div>
+                <div class="mission-action-row">
+                  <div class="field"><label for="actionDuration">Duration · s</label><input id="actionDuration" type="number" min="0" max="3600" step="1" value="0" /></div>
+                  <button class="button secondary" type="button" id="addActionButton">Add action</button>
+                </div>
+              </div>
+            </aside>
+
+            <section class="mission-canvas-panel panel">
+              <div class="mission-canvas-head">
+                <div><p class="eyebrow">METRIC MAP · <span id="mapFrameLabel">MAP FRAME</span></p><h2 id="canvasMissionName">Untitled mission</h2></div>
+                <div class="mission-canvas-status"><span id="mapCursorReadout">x — · y —</span><span class="pill" id="mapToolReadout">SELECT</span></div>
+              </div>
+              <div class="mission-canvas-wrap" id="missionCanvasWrap">
+                <canvas id="missionCanvas" tabindex="0" aria-label="Interactive metric mission map"></canvas>
+                <div class="map-empty-hint" id="mapEmptyHint"><strong>Add a route</strong><span>Select “Add route”, then click the map to place waypoints.</span></div>
+              </div>
+              <div class="map-legend">
+                <span><i class="boundary"></i>Operating boundary</span>
+                <span><i class="teach"></i>Manual teach trace</span>
+                <span><i class="route"></i>Mission route</span>
+                <span><i class="obstacle"></i>Obstacle / exclusion</span>
+              </div>
+            </section>
+
+            <aside class="mission-inspector panel">
+              <div class="mission-panel-head"><p class="eyebrow">MISSION CHECK</p><h2>Route inspector</h2></div>
+              <div class="waypoint-inspector" id="waypointInspector">
+                <p id="waypointEmpty">Select a waypoint to edit its movement settings.</p>
+                <div id="waypointFields" hidden>
+                  <div class="field"><label for="waypointName">Waypoint name</label><input id="waypointName" /></div>
+                  <div class="mission-dimension-grid">
+                    <div class="field"><label for="waypointX">X · m</label><input id="waypointX" type="number" step="0.01" /></div>
+                    <div class="field"><label for="waypointY">Y · m</label><input id="waypointY" type="number" step="0.01" /></div>
+                    <div class="field"><label for="waypointSpeed">Speed · m/s</label><input id="waypointSpeed" type="number" min="0.01" max="3" step="0.05" /></div>
+                    <div class="field"><label for="waypointTolerance">Tolerance · m</label><input id="waypointTolerance" type="number" min="0.01" max="2" step="0.01" /></div>
+                  </div>
+                  <div class="field"><label for="waypointHeading">Final heading · degrees (optional)</label><input id="waypointHeading" type="number" min="-360" max="360" step="1" placeholder="Follow route direction" /></div>
+                  <div class="waypoint-actions" id="waypointActions"></div>
+                  <button class="button danger full" type="button" id="deleteSelectionButton">Delete waypoint</button>
+                </div>
+              </div>
+
+              <div class="mission-metrics">
+                <div><span>DISTANCE</span><strong id="missionDistance">0.00 m</strong></div>
+                <div><span>WAYPOINTS</span><strong id="missionWaypointCount">0</strong></div>
+                <div><span>ACTIONS</span><strong id="missionActionCount">0</strong></div>
+                <div><span>TEACH POSES</span><strong id="missionTeachCount">0</strong></div>
+              </div>
+
+              <div class="mission-validation waiting" id="missionValidation">
+                <strong id="missionValidationTitle">NOT CHECKED</strong>
+                <ul id="missionValidationMessages"><li>Validate before compiling a rover plan.</li></ul>
+              </div>
+              <button class="button secondary full" type="button" id="validateMissionButton">Validate route</button>
+              <button class="button primary full" type="button" id="simulateMissionButton">▶ Compile & simulate</button>
+              <button class="button danger full" type="button" id="stopSimulationButton" hidden>■ Stop simulation</button>
+              <div class="simulation-status" id="simulationStatus"><i></i><span>Rover simulator idle</span></div>
+              <pre class="mission-plan-preview" id="missionPlanPreview">No controller plan compiled.</pre>
+            </aside>
+          </div>
+        </section>
+
         <section class="page" id="page-captures">
           <div class="section-intro">
             <div><p>Saved keyframes from rover recordings. Open a capture to inspect its photos or send it to DA3.</p></div>
             <button class="button secondary" data-go-live>＋ New capture</button>
           </div>
           <div class="card-grid" id="captureGrid"></div>
+        </section>
+
+        <section class="page" id="page-reports">
+          <div class="section-intro"><div><p>Combine a saved LiDAR room, all camera photos, video, a DA3 model, ambient readings, and optional AI observations into one interactive inspection report.</p></div></div>
+          <div class="inspection-grid">
+            <section class="panel inspection-panel">
+              <div class="card-heading"><div><p class="eyebrow">INSPECTION EVIDENCE</p><h2>Create report</h2></div></div>
+              <div class="field"><label for="reportAsset">Asset or area</label><input id="reportAsset" placeholder="Fan A / haul road section" /></div>
+              <div class="field"><label for="reportCapture">Camera capture</label><select id="reportCapture"></select></div>
+              <div class="field"><label for="reportRoom">Saved LiDAR room</label><select id="reportRoom"></select></div>
+              <div class="inspection-remote-actions"><button class="button secondary" type="button" id="sendDa3Button">Send capture to DA3 PC</button><button class="button secondary" type="button" id="checkDa3Button">Check DA3</button></div>
+              <p id="remoteDa3Status" role="status">Remote DA3 configuration is checked on the laptop.</p>
+              <div class="field"><label for="reportNotes">Operator notes</label><textarea id="reportNotes" rows="4" placeholder="Observed conditions, location, inspection purpose"></textarea></div>
+              <label class="switch-control"><input id="reportUseAi" type="checkbox" /><span></span><b>Analyze selected frames with OpenRouter</b></label>
+              <div class="field"><label for="reportModel">OpenRouter vision model ID</label><input id="reportModel" value="google/gemini-2.5-flash" /></div>
+              <button class="button primary" type="button" id="createReportButton">Generate interactive report</button>
+              <p id="reportProgress" role="status">Choose a capture and a saved room.</p>
+            </section>
+            <section class="panel inspection-panel">
+              <div class="card-heading"><div><p class="eyebrow">LIVE LIDAR &amp; SUPERVISED DRIVE</p><h2>Room mapping</h2></div></div>
+              <div class="inspection-live-pair"><div class="inspection-live-strip">
+                <div class="inspection-camera-frame"><img id="inspectionCamera" alt="Live rover camera during inspection" hidden /><span id="inspectionCameraPlaceholder">Connect the rover camera to view the inspection feed.</span></div>
+                <div class="inspection-live-details">
+                  <strong id="inspectionCameraStatus">Camera disconnected</strong>
+                  <span>Temperature <b id="inspectionTemperature">—</b></span>
+                  <span>Humidity <b id="inspectionHumidity">—</b></span>
+                  <span id="inspectionCaptureStatus">Not recording</span>
+                  <div class="inspection-remote-actions"><button class="button secondary" type="button" id="inspectionConfigureCamera">Configure camera</button><button class="button record" type="button" id="inspectionRecordButton" disabled>Start recording</button></div>
+                </div>
+              </div><button class="expedition-map-button report-map-button" id="reportMapOpen" type="button" aria-label="Open full LiDAR map"><canvas id="reportMap" width="500" height="280"></canvas><span>Open full LiDAR map ↗</span></button></div>
+              <p>The camera and live LiDAR preview are side by side. Open the map for detailed scanning and route controls.</p>
+            </section>
+          </div>
+          <section class="panel inspection-panel"><div class="card-heading"><div><p class="eyebrow">GENERATED EVIDENCE</p><h2>Saved reports</h2></div></div><div id="reportList"></div></section>
         </section>
 
         <section class="page" id="page-reconstructions">
@@ -368,7 +702,62 @@
         shadow-intensity="0"
         exposure="1.1"
         alt="Interactive DA3 reconstruction"
-      ></model-viewer>
+      >
+        <button class="semantic-hotspot" id="semanticHotspot" slot="hotspot-selected" data-position="0m 0m 0m" hidden>
+          <span id="semanticHotspotLabel">Selected object</span>
+        </button>
+      </model-viewer>
+      <aside class="semantic-panel" id="semanticViewerPanel" hidden>
+        <div class="semantic-panel-head"><span>SEMANTIC OBJECTS</span><strong id="semanticObjectCount">0</strong></div>
+        <div class="semantic-filter-row">
+          <button type="button" class="semantic-filter active" data-semantic-filter="all">All</button>
+          <button type="button" class="semantic-filter" data-semantic-filter="candidate">To review</button>
+          <button type="button" class="semantic-filter" data-semantic-filter="accepted">Accepted</button>
+        </div>
+        <div class="semantic-object-list" id="semanticObjectList"></div>
+        <section class="semantic-inspector" id="semanticInspector" hidden>
+          <div class="semantic-inspector-head"><strong id="semanticInspectorId">Object</strong><button type="button" id="closeSemanticInspector" aria-label="Close object editor">×</button></div>
+          <label>Label<input id="semanticLabel" maxlength="80" /></label>
+          <label>Review note<input id="semanticNote" maxlength="240" placeholder="Optional correction note" /></label>
+          <div class="semantic-review-actions">
+            <button type="button" class="button secondary" data-semantic-review="rejected">Reject</button>
+            <button type="button" class="button secondary" data-semantic-review="candidate">Save</button>
+            <button type="button" class="button primary" data-semantic-review="accepted">Accept</button>
+          </div>
+          <p class="semantic-dimensions" id="semanticDimensions"></p>
+          <div class="semantic-evidence" id="semanticEvidence"></div>
+          <div class="semantic-calibration-row">
+            <select id="semanticCalibrationAxis" aria-label="Reference dimension"><option value="0">Width X</option><option value="1">Height Y</option><option value="2">Depth Z</option></select>
+            <input id="semanticKnownSize" type="number" min="0.01" step="0.01" placeholder="Known m" aria-label="Known size in metres" />
+            <button type="button" class="button secondary" id="calibrateSemantic">Set scale</button>
+          </div>
+          <p id="semanticCalibrationStatus" class="semantic-calibration-status">Relative DA3 units</p>
+          <div class="semantic-merge-row"><select id="semanticMergeTarget" aria-label="Object to merge with"></select><button type="button" class="button secondary" id="mergeSemantic">Merge</button></div>
+          <div class="semantic-merge-row"><select id="semanticSplitAxis" aria-label="Spatial split axis"><option value="0">Split on X</option><option value="1">Split on Y</option><option value="2">Split on Z</option></select><button type="button" class="button secondary" id="splitSemantic">Split geometry</button></div>
+        </section>
+        <button class="button primary" id="clearSemanticHighlight" type="button" hidden>Show full scene</button>
+        <a class="button secondary" id="semanticReportLink" href="#" target="_blank" rel="noopener">Open evidence report</a>
+      </aside>
+    </dialog>
+
+    <dialog id="autonomyConsoleDialog" class="modal autonomy-console-modal">
+      <div class="modal-header">
+        <div><p class="eyebrow">LIVE DECISION STREAM</p><h2>Autonomy console</h2></div>
+        <div class="autonomy-console-header-actions">
+          <span class="pill" id="autonomyConsoleStatus">Idle</span>
+          <button class="icon-button modal-close" aria-label="Close">×</button>
+        </div>
+      </div>
+      <div class="autonomy-console-meta">
+        <span>Target <strong id="autonomyConsoleTarget">—</strong></span>
+        <span>Action <strong id="autonomyConsoleAction">stopped</strong></span>
+        <span>Steps <strong id="autonomyConsoleSteps">0</strong></span>
+      </div>
+      <pre class="autonomy-console-body" id="autonomyConsoleBody" aria-live="polite">Waiting for an autonomy task…</pre>
+      <div class="autonomy-console-footer">
+        <span><i></i> Updates live every second</span>
+        <button class="button danger" id="autonomyConsoleStop" type="button">Emergency stop AI</button>
+      </div>
     </dialog>
 
     <dialog id="reconstructDialog" class="modal form-modal">
@@ -489,6 +878,6 @@
     </div>
 
     <div class="toast-stack" id="toastStack"></div>
-    <script src="/assets/app.js?v=20260827-7"></script>
+    <script src="/assets/app.js?v=20260929-10"></script>
   </body>
 </html>

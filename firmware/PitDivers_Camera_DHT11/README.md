@@ -15,7 +15,7 @@ sketch keeps the camera and both sensors running on the same ESP32-S3.
 | HC-SR04 pin | ESP32-S3 |
 |---|---|
 | VCC | 5 V |
-| TRIG | GPIO 46 |
+| TRIG | GPIO 47 |
 | ECHO | GPIO 14 through a voltage divider |
 | GND | GND |
 
@@ -36,10 +36,8 @@ HC-SR04 ECHO ── 1 kΩ ──┬── GPIO 14
                         └── 2 kΩ ── GND
 ```
 
-GPIO 46 and GPIO 14 do not conflict with the selected camera map. GPIO 46 can
-operate as an output, but it is also a boot-strapping pin. The HC-SR04 TRIG
-input should leave it LOW during reset. If flashing or booting becomes
-unreliable, temporarily disconnect the TRIG wire during reset/upload.
+GPIO 47 and GPIO 14 do not conflict with the selected camera map. GPIO 46 is
+left unused because it is a boot-strapping pin.
 
 ## Arduino setup
 
@@ -66,8 +64,15 @@ Replace `<ip>` with the address printed in Serial Monitor.
 |---|---|
 | Camera controls | `http://<ip>/` |
 | MJPEG stream | `http://<ip>:81/stream` |
-| DHT11 and ultrasonic JSON | `http://<ip>:82/sensors` |
+| Sensor summary JSON | `http://<ip>:82/sensors` |
+| Buffered 100 Hz IMU samples | `http://<ip>:82/imu?after=0&limit=128` |
 | Sensor service health | `http://<ip>:82/health` |
+
+The dashboard can switch the camera between VGA quality mode and QVGA VIO
+mode through the camera control endpoint. On RGB565 camera modules, QVGA also
+reduces the software-JPEG quality from 70 to 50 so inertial feature tracking
+receives frames more frequently. Switching back to quality mode restores both
+settings.
 
 Example sensor response:
 
@@ -103,9 +108,15 @@ The DHT11 is sampled every two seconds and the HC-SR04 every 100 ms using
 stream servers run in their own tasks and there is no continuously blocking
 sensor loop.
 
-The MPU6050 is updated every 50 ms (20 Hz). At startup, keep the rover still
+The MPU6050 is updated every 10 ms (100 Hz) by a dedicated task. At startup, keep the rover still
 while `MPU6050_tockn` calculates gyro offsets. Acceleration is reported in g,
 angular rate in degrees per second, and roll/pitch/yaw in degrees.
+
+The `/imu` endpoint returns a sequenced ring buffer of raw readings timestamped
+with the ESP32 monotonic microsecond clock. Pass the last received sequence in
+`after` to collect only new samples. Camera MJPEG parts use the same clock in
+their `X-Timestamp-Us` header and include matching boot and frame identifiers.
+See `docs/VIO_FOUNDATION.md` for the recording format and VIO roadmap.
 
 The camera uses a 20 MHz XCLK, two PSRAM frame buffers, and latest-frame
 capture. This module falls back to RGB565, so the web server converts its frames

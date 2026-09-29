@@ -21,6 +21,7 @@ from routes import RouteStore, valid_run_id
 from autonav_io import read_status, write_command
 from localization_view import make_localization_view
 from atomic_snapshot import replace_with_retry
+from drive_commands import manual_request
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC = Path(__file__).with_name('dashboard.html')
@@ -86,7 +87,7 @@ class MappingService:
                     # The ESP serves HTTP and microSD reads on one loop. Leave
                     # its SD log alone while manual wheel commands are active;
                     # the durable backlog is collected as soon as driving stops.
-                    if time.monotonic() < self.drive_quiet_until:
+                    if time.monotonic() < self.drive_quiet_until and not self.ros_session_active():
                         self.quit.wait(.1)
                         continue
                     sync_paused = self.ros_session_active()
@@ -459,17 +460,22 @@ def make_handler(service):
                     direction = data.get('direction')
                     if direction not in ('forward','backward','left','right','stop'):
                         raise ValueError('Invalid direction')
+                    request = manual_request(service.rover, direction, data.get('duty'))
                     if read_status(service.mission_dir)['state'] in ('active','paused'):
                         if direction != 'stop':
                             raise ValueError('Cancel automatic travel before manual driving')
                         write_command(service.mission_dir, 'cancel', '')
                     service.drive_quiet_until = time.monotonic() + 1.0
                     with service.control_lock:
-                        with urlopen(service.rover + '/' + direction, timeout=.8) as response:
+                        with urlopen(request, timeout=.8) as response:
                             response.read()
                 else:
                     return self.send('{"error":"Not found"}', code=404)
                 self.send('{"ok":true}')
+            except HTTPError as exc:
+                try:detail=json.load(exc).get('error',str(exc))
+                except (ValueError,AttributeError):detail=str(exc)
+                self.send(json.dumps(dict(error=detail)),code=exc.code)
             except (ValueError, OSError) as exc:
                 self.send(json.dumps(dict(error=str(exc))), code=400)
     return Handler

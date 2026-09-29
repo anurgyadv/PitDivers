@@ -7,6 +7,8 @@
  */
 
 #include "esp_camera.h"
+#include "esp_system.h"
+#include "esp_timer.h"
 #include <DHTesp.h>
 #include <MPU6050_tockn.h>
 #include <WebServer.h>
@@ -23,10 +25,8 @@
 
 constexpr uint8_t DHT_PIN = 21;
 constexpr uint32_t DHT_READ_INTERVAL_MS = 2000;
-// GPIO 46 is camera-free and can drive the HC-SR04 TRIG signal. It is also a
-// boot-strapping pin, so the attached HC-SR04 input must not pull it HIGH while
-// the ESP32-S3 is resetting or entering the serial bootloader.
-constexpr uint8_t SONAR_TRIG_PIN = 46;
+// GPIO 47 is camera-free and avoids the boot-strapping function on GPIO 46.
+constexpr uint8_t SONAR_TRIG_PIN = 47;
 constexpr uint8_t SONAR_ECHO_PIN = 14;
 constexpr float SONAR_MAX_DISTANCE_CM = 700.0f;
 constexpr float SOUND_SPEED_CM_PER_US = 0.034f;
@@ -41,16 +41,41 @@ constexpr uint16_t SENSOR_HTTP_PORT = 82;
 // the selected frame resolution.
 constexpr uint32_t CAMERA_XCLK_HZ = 20000000;
 constexpr uint8_t CAMERA_JPEG_QUALITY = 10;
-constexpr uint8_t MPU6050_SDA_PIN = 41;
-constexpr uint8_t MPU6050_SCL_PIN = 42;
+constexpr uint8_t MPU6050_SDA_PIN = 3;
+constexpr uint8_t MPU6050_SCL_PIN = 46;
 constexpr uint8_t MPU6050_ADDRESS = 0x68;
-constexpr uint32_t MPU6050_READ_INTERVAL_MS = 50;
+// VIO estimators need substantially denser inertial data than the dashboard
+// attitude display. Sampling is performed by a dedicated task so the blocking
+// ultrasonic measurement cannot introduce 40+ ms holes in the IMU timeline.
+constexpr uint32_t MPU6050_SAMPLE_RATE_HZ = 100;
+constexpr uint32_t MPU6050_READ_INTERVAL_US = 1000000 / MPU6050_SAMPLE_RATE_HZ;
 constexpr uint32_t MPU6050_SERIAL_INTERVAL_MS = 500;
+constexpr size_t IMU_BUFFER_SIZE = 256;
+constexpr size_t IMU_API_DEFAULT_SAMPLES = 64;
+constexpr size_t IMU_API_MAX_SAMPLES = 128;
+
+struct ImuSample {
+  uint32_t sequence;
+  uint64_t timestampUs;
+  int16_t accelX;
+  int16_t accelY;
+  int16_t accelZ;
+  int16_t gyroX;
+  int16_t gyroY;
+  int16_t gyroZ;
+  int16_t temperature;
+};
 
 camera_config_t cameraConfig;
 DHTesp dht;
 MPU6050 mpu6050(Wire);
 WebServer sensorServer(SENSOR_HTTP_PORT);
+
+// These identifiers are also attached to camera frames in app_httpd.cpp. They
+// let a recorder reject data spanning an ESP reboot and align both streams to
+// the same monotonic device clock.
+uint32_t pitdiversBootId = 0;
+volatile uint32_t pitdiversFrameSequence = 0;
 
 float latestTemperatureC = NAN;
 float latestHumidityPercent = NAN;
@@ -75,6 +100,13 @@ float latestMpuTemperatureC = NAN;
 uint32_t lastMpuAttemptMs = 0;
 uint32_t lastGoodMpuReadingMs = 0;
 uint32_t lastMpuSerialMs = 0;
+portMUX_TYPE imuMux = portMUX_INITIALIZER_UNLOCKED;
+ImuSample imuBuffer[IMU_BUFFER_SIZE];
+size_t imuWriteIndex = 0;
+size_t imuSampleCount = 0;
+uint32_t nextImuSequence = 1;
+uint32_t imuMissedDeadlines = 0;
+TaskHandle_t imuSamplingTaskHandle = nullptr;
 
 void startCameraServer();
 bool initializeCamera();
@@ -84,6 +116,14 @@ float readSonarDistanceCm();
 void updateSonarReading(bool forceRead = false);
 bool initializeMpu6050();
 void updateMpu6050Reading(bool forceRead = false);
+void imuSamplingTask(void *parameter);
+void handleImuReadings();
+
+void appendUint64(String &response, uint64_t value) {
+  char buffer[24];
+  snprintf(buffer, sizeof(buffer), "%llu", static_cast<unsigned long long>(value));
+  response += buffer;
+}
 
 void addCorsHeaders() {
   sensorServer.sendHeader("Access-Control-Allow-Origin", "*");
@@ -105,7 +145,6 @@ void handleSensorHealth() {
 void handleSensorReadings() {
   updateDhtReading();
   updateSonarReading();
-  updateMpu6050Reading();
 
   const bool dhtValid = latestDhtStatus == 0 && !isnan(latestTemperatureC) &&
                         !isnan(latestHumidityPercent);
@@ -114,6 +153,10 @@ void handleSensorReadings() {
   response.reserve(900);
   response += "{\"ok\":";
   response += (anySensorValid ? "true" : "false");
+  response += ",\"boot_id\":";
+  response += String(pitdiversBootId);
+  response += ",\"clock_us\":";
+  appendUint64(response, static_cast<uint64_t>(esp_timer_get_time()));
   response += ",\"sensor\":\"DHT11\"";
   response += ",\"dht_ok\":";
   response += (dhtValid ? "true" : "false");
@@ -169,10 +212,113 @@ void handleSensorReadings() {
   response += (latestMpuValid ? String(latestMpuTemperatureC, 2) : String("null"));
   response += ",\"mpu_age_ms\":";
   response += (latestMpuValid ? String(millis() - lastGoodMpuReadingMs) : String("null"));
+  response += ",\"imu_rate_hz\":";
+  response += String(MPU6050_SAMPLE_RATE_HZ);
+  response += ",\"imu_sequence\":";
+  portENTER_CRITICAL(&imuMux);
+  const uint32_t latestSequence = nextImuSequence - 1;
+  portEXIT_CRITICAL(&imuMux);
+  response += String(latestSequence);
   response += "}";
 
   addCorsHeaders();
   sensorServer.send(anySensorValid ? 200 : 503, "application/json", response);
+}
+
+void handleImuReadings() {
+  uint32_t afterSequence = 0;
+  if (sensorServer.hasArg("after")) {
+    afterSequence = strtoul(sensorServer.arg("after").c_str(), nullptr, 10);
+  }
+
+  size_t limit = IMU_API_DEFAULT_SAMPLES;
+  if (sensorServer.hasArg("limit")) {
+    const long requested = sensorServer.arg("limit").toInt();
+    if (requested > 0) {
+      limit = min(static_cast<size_t>(requested), IMU_API_MAX_SAMPLES);
+    }
+  }
+
+  ImuSample *batch = static_cast<ImuSample *>(malloc(limit * sizeof(ImuSample)));
+  if (batch == nullptr) {
+    addCorsHeaders();
+    sensorServer.send(503, "application/json", "{\"ok\":false,\"error\":\"imu_buffer_allocation_failed\"}");
+    return;
+  }
+
+  size_t batchCount = 0;
+  uint32_t oldestSequence = 0;
+  uint32_t latestSequence = 0;
+  uint32_t missedDeadlines = 0;
+  portENTER_CRITICAL(&imuMux);
+  latestSequence = nextImuSequence - 1;
+  missedDeadlines = imuMissedDeadlines;
+  if (imuSampleCount > 0) {
+    const size_t oldestIndex = (imuWriteIndex + IMU_BUFFER_SIZE - imuSampleCount) % IMU_BUFFER_SIZE;
+    oldestSequence = imuBuffer[oldestIndex].sequence;
+    for (size_t offset = 0; offset < imuSampleCount && batchCount < limit; ++offset) {
+      const ImuSample &sample = imuBuffer[(oldestIndex + offset) % IMU_BUFFER_SIZE];
+      if (sample.sequence > afterSequence) {
+        batch[batchCount++] = sample;
+      }
+    }
+  }
+  portEXIT_CRITICAL(&imuMux);
+
+  const bool droppedBefore = afterSequence != 0 && oldestSequence != 0 &&
+                             afterSequence + 1 < oldestSequence;
+  String response;
+  response.reserve(420 + batchCount * 105);
+  response += "{\"ok\":";
+  response += (latestMpuValid ? "true" : "false");
+  response += ",\"boot_id\":";
+  response += String(pitdiversBootId);
+  response += ",\"clock_us\":";
+  appendUint64(response, static_cast<uint64_t>(esp_timer_get_time()));
+  response += ",\"rate_hz\":";
+  response += String(MPU6050_SAMPLE_RATE_HZ);
+  response += ",\"accel_lsb_per_g\":16384.0";
+  response += ",\"gyro_lsb_per_dps\":65.5";
+  response += ",\"oldest_sequence\":";
+  response += String(oldestSequence);
+  response += ",\"latest_sequence\":";
+  response += String(latestSequence);
+  response += ",\"missed_deadlines\":";
+  response += String(missedDeadlines);
+  response += ",\"dropped_before\":";
+  response += (droppedBefore ? "true" : "false");
+  response += ",\"sample_fields\":[\"sequence\",\"timestamp_us\",\"accel_x_raw\",\"accel_y_raw\",\"accel_z_raw\",\"gyro_x_raw\",\"gyro_y_raw\",\"gyro_z_raw\",\"temperature_raw\"]";
+  response += ",\"samples\":[";
+  for (size_t index = 0; index < batchCount; ++index) {
+    if (index > 0) {
+      response += ',';
+    }
+    const ImuSample &sample = batch[index];
+    response += '[';
+    response += String(sample.sequence);
+    response += ',';
+    appendUint64(response, sample.timestampUs);
+    response += ',';
+    response += String(sample.accelX);
+    response += ',';
+    response += String(sample.accelY);
+    response += ',';
+    response += String(sample.accelZ);
+    response += ',';
+    response += String(sample.gyroX);
+    response += ',';
+    response += String(sample.gyroY);
+    response += ',';
+    response += String(sample.gyroZ);
+    response += ',';
+    response += String(sample.temperature);
+    response += ']';
+  }
+  response += "]}";
+  free(batch);
+
+  addCorsHeaders();
+  sensorServer.send(latestMpuValid ? 200 : 503, "application/json", response);
 }
 
 void initializeSensorServer() {
@@ -187,18 +333,32 @@ void initializeSensorServer() {
     sensorServer.send(
       200,
       "text/plain",
-      "PitDivers DHT11 + HC-SR04 + MPU6050 sensor service\nGET /sensors\nGET /health\n"
+      "PitDivers DHT11 + HC-SR04 + MPU6050 sensor service\nGET /sensors\nGET /imu\nGET /health\n"
     );
   });
   sensorServer.on("/health", HTTP_GET, handleSensorHealth);
   sensorServer.on("/health", HTTP_OPTIONS, handleSensorOptions);
   sensorServer.on("/sensors", HTTP_GET, handleSensorReadings);
   sensorServer.on("/sensors", HTTP_OPTIONS, handleSensorOptions);
+  sensorServer.on("/imu", HTTP_GET, handleImuReadings);
+  sensorServer.on("/imu", HTTP_OPTIONS, handleSensorOptions);
   sensorServer.onNotFound([]() {
     addCorsHeaders();
     sensorServer.send(404, "application/json", "{\"ok\":false,\"error\":\"not_found\"}");
   });
   sensorServer.begin();
+
+  if (latestMpuValid && imuSamplingTaskHandle == nullptr) {
+    xTaskCreatePinnedToCore(
+      imuSamplingTask,
+      "pitdivers-imu",
+      4096,
+      nullptr,
+      10,
+      &imuSamplingTaskHandle,
+      1
+    );
+  }
 
   Serial.printf("DHT11 ready on GPIO %u\n", DHT_PIN);
   Serial.printf("HC-SR04 ready: TRIG GPIO %u | ECHO GPIO %u\n", SONAR_TRIG_PIN, SONAR_ECHO_PIN);
@@ -290,9 +450,6 @@ bool initializeMpu6050() {
 
 void updateMpu6050Reading(bool forceRead) {
   const uint32_t now = millis();
-  if (!forceRead && now - lastMpuAttemptMs < MPU6050_READ_INTERVAL_MS) {
-    return;
-  }
   lastMpuAttemptMs = now;
 
   Wire.beginTransmission(MPU6050_ADDRESS);
@@ -306,6 +463,23 @@ void updateMpu6050Reading(bool forceRead) {
   }
 
   mpu6050.update();
+  ImuSample sample;
+  sample.timestampUs = static_cast<uint64_t>(esp_timer_get_time());
+  sample.accelX = mpu6050.getRawAccX();
+  sample.accelY = mpu6050.getRawAccY();
+  sample.accelZ = mpu6050.getRawAccZ();
+  sample.gyroX = mpu6050.getRawGyroX();
+  sample.gyroY = mpu6050.getRawGyroY();
+  sample.gyroZ = mpu6050.getRawGyroZ();
+  sample.temperature = mpu6050.getRawTemp();
+
+  portENTER_CRITICAL(&imuMux);
+  sample.sequence = nextImuSequence++;
+  imuBuffer[imuWriteIndex] = sample;
+  imuWriteIndex = (imuWriteIndex + 1) % IMU_BUFFER_SIZE;
+  if (imuSampleCount < IMU_BUFFER_SIZE) {
+    ++imuSampleCount;
+  }
   latestAccelXG = mpu6050.getAccX();
   latestAccelYG = mpu6050.getAccY();
   latestAccelZG = mpu6050.getAccZ();
@@ -318,6 +492,7 @@ void updateMpu6050Reading(bool forceRead) {
   latestMpuTemperatureC = mpu6050.getTemp();
   latestMpuValid = true;
   lastGoodMpuReadingMs = now;
+  portEXIT_CRITICAL(&imuMux);
 
   if (forceRead || now - lastMpuSerialMs >= MPU6050_SERIAL_INTERVAL_MS) {
     Serial.printf(
@@ -336,11 +511,42 @@ void updateMpu6050Reading(bool forceRead) {
   }
 }
 
+void imuSamplingTask(void *parameter) {
+  (void)parameter;
+  int64_t nextSampleUs = esp_timer_get_time();
+  while (true) {
+    int64_t nowUs = esp_timer_get_time();
+    if (nowUs < nextSampleUs) {
+      const int64_t remainingUs = nextSampleUs - nowUs;
+      if (remainingUs > 1500) {
+        vTaskDelay(pdMS_TO_TICKS((remainingUs - 500) / 1000));
+      } else {
+        delayMicroseconds(static_cast<uint32_t>(remainingUs));
+      }
+      continue;
+    }
+
+    if (nowUs - nextSampleUs >= static_cast<int64_t>(MPU6050_READ_INTERVAL_US)) {
+      const uint32_t missed = static_cast<uint32_t>(
+        (nowUs - nextSampleUs) / MPU6050_READ_INTERVAL_US
+      );
+      portENTER_CRITICAL(&imuMux);
+      imuMissedDeadlines += missed;
+      portEXIT_CRITICAL(&imuMux);
+      nextSampleUs += static_cast<int64_t>(missed) * MPU6050_READ_INTERVAL_US;
+    }
+
+    updateMpu6050Reading();
+    nextSampleUs += MPU6050_READ_INTERVAL_US;
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   Serial.setDebugOutput(true);
   Serial.println();
   Serial.println("Starting PitDivers camera + DHT11 + HC-SR04 + MPU6050 firmware");
+  pitdiversBootId = esp_random();
 
   const bool cameraReady = initializeCamera();
 
@@ -368,14 +574,12 @@ void setup() {
   initializeSensorServer();
   updateDhtReading(true);
   updateSonarReading(true);
-  updateMpu6050Reading(true);
 }
 
 void loop() {
   sensorServer.handleClient();
   updateDhtReading();
   updateSonarReading();
-  updateMpu6050Reading();
   delay(2);
 }
 

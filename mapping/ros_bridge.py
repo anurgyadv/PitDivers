@@ -57,6 +57,8 @@ class RoverBridge(Node):
         self.resolution = .05
         self.pose = [0., 0., 0.]
         self.environment_keys = set()
+        self.gap_matcher = None
+        self.gap_good = 0
         self.records = {}
         self.last_record = None
         self.blocked = False
@@ -161,7 +163,11 @@ class RoverBridge(Node):
             if self.last_record and (record['boot_id'] != self.last_record['boot_id'] or
                     ((record['start_ms']-self.last_record['end_ms']) & 0xffffffff) > 3000):
                 if self.resume_after_gap and record['boot_id'] == self.last_record['boot_id']:
-                    self.had_gap = True
+                    self.had_gap = bool(self.cells and self.path)
+                    if not self.quality_file and self.cells:
+                        from localization_quality import MapMatcher
+                        self.gap_matcher = MapMatcher(self.cells, self.resolution)
+                        self.gap_good = 0
                     if self.recover_localization:
                         self.recovery_start_pose = tuple(self.pose)
                         self.recovery_scan_id = scan_id
@@ -236,6 +242,20 @@ class RoverBridge(Node):
                         self.recovery_start_pose = None
                         self.recovery_scan_id = None
             record = self.records[scan_id]
+            if self.had_gap and self.gap_matcher is not None:
+                # Check recovered scans against the map BEFORE the gap, so new
+                # surfaces inserted by SLAM cannot validate their own alignment.
+                points=[]
+                for i,mm in enumerate(record['ranges_mm']):
+                    if 80 <= mm < 5950:
+                        angle=math.radians((self.forward_index-i) if self.clockwise else (i-self.forward_index))
+                        points.append((mm/1000*math.cos(angle),mm/1000*math.sin(angle)))
+                fit=self.gap_matcher.score(points,(p.x,p.y,yaw))
+                good=fit['beams']>=50 and fit['inlier_fraction']>=.60 and fit['median_error_m']<=.12
+                self.gap_good=self.gap_good+1 if good else 0
+                if self.gap_good>=15:
+                    self.had_gap=False
+                    self.gap_matcher=None
             age = record.get('environment_age_ms')
             key = (record['boot_id'], (record['end_ms']-age)&0xffffffff) if age is not None else None
             if age is not None and 0 <= age <= 3000 and key not in self.environment_keys:

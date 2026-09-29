@@ -28,11 +28,14 @@ from sensor_msgs.msg import LaserScan
 from tf2_ros import Buffer, TransformException, TransformListener
 
 from autonav_core import Grid, MotionInputs, estimate_forward_offset, motion_command, turn_command, RecoveryGate, TurnProgress
-from autonav_core import DRIVE_DUTY, ARRIVAL_TOLERANCE_M, TURN_ENTRY_RAD, RECOVERY_STABLE_S
+from autonav_core import DRIVE_DUTY, TURN_DUTY, ARRIVAL_TOLERANCE_M, TURN_ENTRY_RAD, RECOVERY_STABLE_S
+from demo_planner import plan_tour
 from atomic_snapshot import replace_with_retry
 from routes import RouteStore
 from scan_lag import check_scan_lag
 from live_costmap import LiveCostmap
+from onboard_motion import OnboardClient
+from drive_profile import predict_yaw, drive_duty, route_target
 
 ROOT = Path(__file__).resolve().parent.parent
 MISSION = ROOT / 'data/autonav'
@@ -53,7 +56,12 @@ class HallwayNavigator(Node):
         self.grid = Grid.from_cells(graph['map']['cells'], graph['map']['resolution'])
         self.costmap = LiveCostmap(self.grid)
         self.current_scan = None
-        self.forward_offset = estimate_forward_offset(graph['map']['path'])
+        self.forward_offset = (float(graph['forward_offset_rad']) if 'forward_offset_rad' in graph
+                               else estimate_forward_offset(graph['map']['path']))
+        self.remaining_goals = []
+        self.demo_tour = False
+        self.visited = 0
+        self.total_stops = 0
         MISSION.mkdir(parents=True, exist_ok=True)
         self.command_file = MISSION/'command.json'
         self.status_file = MISSION/'status.json'
@@ -61,6 +69,7 @@ class HallwayNavigator(Node):
         self.state, self.reason = 'idle', 'Waiting for explicit Go to B'
         self.path = []
         self.goal = None
+        self.remaining_goals = []
         self.round_trip = False
         self.return_start = None
         self.reverse = False
@@ -69,6 +78,11 @@ class HallwayNavigator(Node):
         self.nearest_front = 0.0
         self.nearest_rear = 0.0
         self.sweep_clearance = 0.0
+        self.local_motion = None
+        self.gyro_bias = None
+        self.onboard_turn = False
+        self.onboard_poll_at = 0.
+        self.turn_completed_at = 0.
         self.turn_started = None
         self.turn_progress = None
         self.turn_diagnostics = None
@@ -184,6 +198,8 @@ class HallwayNavigator(Node):
             (scan.header.stamp.sec,scan.header.stamp.nanosec))
 
     def stop(self, state: str, reason: str):
+        self.onboard_turn = False
+        self.turn_completed_at = 0.
         self.state, self.reason = state, reason
         self.path = []
         self.goal = None
@@ -198,10 +214,12 @@ class HallwayNavigator(Node):
             with urlopen(self.rover + '/stop', timeout=.4) as response:
                 response.read()
         except OSError:
-            pass  # The ESP's 600 ms lease and Wi-Fi-loss stop remain active.
+            pass  # ESP drive/turn leases and local sensor guards remain active.
         self.write_status()
 
     def pause(self, reason):
+        self.onboard_turn = False
+        self.turn_completed_at = 0.
         self.state, self.reason = 'paused', reason + '; stopped while recovering'
         self.turn_started = None
         self.turn_progress = None
@@ -249,8 +267,8 @@ class HallwayNavigator(Node):
             raise ValueError('Selected map differs from the loaded localization graph')
         if not isinstance(command.get('round_trip', False), bool):
             raise ValueError('Invalid round-trip option')
-        route = self.routes.get(self.run_id)
-        if not route or not route.get('localization_destination'):
+        route = self.routes.get(self.run_id) if 'targets' not in command else None
+        if 'targets' not in command and (not route or not route.get('localization_destination')):
             raise ValueError('Mark B on the saved map before starting')
         if not self.map_seen:
             raise ValueError('ROS occupancy map is not available')
@@ -258,7 +276,7 @@ class HallwayNavigator(Node):
         scan_age = time.monotonic() - self.last_scan
         if pose is None or pose_age > .6 or scan_age > .6 or self.nearest_front < .45:
             raise ValueError('Fresh localization and clear LiDAR scan are required')
-        if command.get('round_trip') and self.nearest_rear < .45:
+        if 'targets' not in command and command.get('round_trip') and self.nearest_rear < .45:
             raise ValueError('LiDAR rear sector must be clear for the return trip')
         lag_reason = self.scan_pipeline_reason(check_live=True)
         if lag_reason:
@@ -267,12 +285,32 @@ class HallwayNavigator(Node):
             capabilities = json.load(response)
         if not capabilities.get('signed_wheels') or capabilities.get('lease_ms', 9999) > 600:
             raise ValueError('Flash the signed-wheel Freenove firmware first')
-        destination = route['localization_destination']
-        goal = destination['x_m'], destination['y_m']
+        self.local_motion = None
+        self.onboard_turn = False
+        self.turn_completed_at = 0.
+        if capabilities.get('onboard_motion') == 1:
+            self.local_motion = OnboardClient(self.rover,self.forward_offset)
+            local_status=self.local_motion.status()
+            if not local_status.get('ready') or local_status.get('calibrating'):
+                raise ValueError('Use Calibrate turns on this surface before starting gyro navigation')
+            calibration=self.local_motion.request('/api/turn-calibration')
+            self.gyro_bias=calibration.get('bias_dps') if calibration.get('ready') else None
+        self.demo_tour = 'targets' in command
+        self.remaining_goals = []
+        self.visited = 0
+        if self.demo_tour:
+            tour=plan_tour(self.grid,pose[:2],command['targets'],command.get('round_trip',True),self.clearance_m)
+            goals=tour['goals']
+            self.total_stops=len(command['targets'])
+            goal=goals[0]
+            self.remaining_goals=goals[1:]
+        else:
+            destination = route['localization_destination']
+            goal = destination['x_m'], destination['y_m']
         self.path = self.grid.plan_from_nearby(pose[:2], goal, self.clearance_m)
         self.path = self.grid.smooth(self.path, self.clearance_m)
         self.goal = goal
-        self.round_trip = command.get('round_trip', False)
+        self.round_trip = command.get('round_trip', False) and not self.demo_tour
         self.return_start = tuple(pose[:2])
         self.reverse = False
         self.turn_started = None
@@ -295,19 +333,39 @@ class HallwayNavigator(Node):
         self.goal = goal
         self.reverse = True
         self.pause_until = now + 2.0
+        self.progress_pose, self.progress_at = pose[:2], self.pause_until
         self.reason = 'At B; pausing before reverse return to A'
         self.write_status(pose)
 
+    def advance_stop(self, pose, now):
+        with urlopen(self.rover+'/stop',timeout=.4) as response:response.read()
+        self.visited += 1
+        if not self.remaining_goals:
+            self.stop('arrived','Tour complete; rover stopped')
+            return
+        self.goal=self.remaining_goals.pop(0)
+        self.path=self.grid.smooth(self.grid.plan_from_nearby(pose[:2],self.goal,self.clearance_m),self.clearance_m)
+        self.reverse=False
+        self.turn_started=self.turn_progress=None
+        self.pause_until=now+.5
+        self.progress_pose,self.progress_at=pose[:2],self.pause_until
+        self.reason='Next stop' if self.visited<self.total_stops else 'Returning to trip start'
+        self.write_status(pose)
+
     def target(self, pose):
-        nearest = min(range(len(self.path)), key=lambda i: math.dist(pose[:2], self.path[i]))
-        for point in self.path[nearest:]:
-            if math.dist(pose[:2], point) >= .25:
-                return point
-        return self.path[-1]
+        return route_target(self.path,pose,self.grid,self.clearance_m)
+
+    def steering_yaw(self, pose, age):
+        try:
+            relay=json.loads((ROOT/'data/ros-map/latest-rover.json').read_text())
+            return predict_yaw(pose[2],age,relay['record'].get('imu'),
+                               time.time()-relay['received_at'],self.gyro_bias)
+        except (OSError,ValueError,KeyError):return pose[2]
 
     def tick(self):
         now = time.monotonic()
-        self.update_costmap()
+        if not self.onboard_turn:
+            self.update_costmap()
         command = self.command_file.read_text() if self.command_file.exists() else ''
         if command and command != self.seen:
             self.seen = command
@@ -333,17 +391,43 @@ class HallwayNavigator(Node):
                 self.write_status()
             self.last_tick = now
             return
-        if now - self.last_tick > .55:
+        if now - self.last_tick > (1.4 if self.onboard_turn else .55):
             self.pause('Control process paused too long')
             return
         self.last_tick = now
         if not self.control_lock.acquire(blocking=False):
             return
         try:
+            if self.onboard_turn:
+                # An accepted bounded turn uses local sensors. It does not wait for
+                # a ROS scan match between pushes; verify global pose after it stops.
+                if now-self.onboard_poll_at >= .3:
+                    local=self.local_motion.poll_turn();self.onboard_poll_at=time.monotonic()
+                    self.turn_diagnostics=local
+                    self.reason=local.get('reason','ESP gyro turn')
+                    if local['mode']=='done':
+                        self.onboard_turn=False
+                        self.turn_started=None
+                        self.turn_progress=None
+                        self.progress_at=time.monotonic()
+                        self.turn_completed_at=self.progress_at
+                        self.last_tick=self.progress_at
+                        self.pause_until=self.progress_at+.1
+                        self.reason='Turn complete; verifying current map position'
+                    self.write_status()
+                return
             pose, pose_age = self.pose()
             if pose is None:
                 self.pause('Localization lost')
                 return
+            if self.turn_completed_at:
+                elapsed=now-self.turn_completed_at
+                if elapsed < .25 or pose_age >= elapsed-.05 or self.last_scan<=self.turn_completed_at:
+                    if elapsed>1.5:self.pause('Waiting for localization measured after the turn')
+                    elif now-self.last_status>.3:self.write_status(pose)
+                    return
+                self.turn_completed_at=0.
+                self.progress_pose=pose[:2];self.progress_at=now
             if pose_age > .6 or now-self.last_scan > .6:
                 self.pause('Localization or LiDAR scan became stale')
                 return
@@ -351,7 +435,7 @@ class HallwayNavigator(Node):
             if lag_reason:
                 self.pause(lag_reason)
                 return
-            forward_yaw = pose[2] + self.forward_offset
+            forward_yaw = self.steering_yaw(pose,pose_age) + self.forward_offset
             travel_yaw = forward_yaw + (math.pi if self.reverse else 0)
             if not self.grid.is_free(pose[0], pose[1], .18):
                 self.pause('Replanning around changed local obstacles')
@@ -361,7 +445,9 @@ class HallwayNavigator(Node):
                     self.write_status(pose)
                 return
             if math.dist(pose[:2], self.goal) < ARRIVAL_TOLERANCE_M:
-                if self.round_trip and not self.reverse:
+                if self.demo_tour:
+                    self.advance_stop(pose,now)
+                elif self.round_trip and not self.reverse:
                     self.begin_return(pose, now)
                 else:
                     self.stop('arrived', 'Returned to starting position' if self.reverse else 'Reached B')
@@ -375,6 +461,15 @@ class HallwayNavigator(Node):
             heading = math.atan2(target[1]-pose[1], target[0]-pose[0])
             error = math.atan2(math.sin(heading-travel_yaw), math.cos(heading-travel_yaw))
             if abs(error) > (.20 if self.turn_started is not None else TURN_ENTRY_RAD):
+                if self.local_motion is not None:
+                    if self.sweep_clearance < .45:
+                        self.pause('LiDAR clearance is insufficient for a turn');return
+                    self.local_motion.turn(math.degrees(error))
+                    self.onboard_turn=True;self.onboard_poll_at=0.
+                    self.last_tick=time.monotonic()
+                    self.reason='ESP is turning using its gyro'
+                    self.write_status(pose)
+                    return
                 odom, odom_age = self.pose('odom')
                 if odom is None or odom_age > .6:
                     self.pause('Turn odometry became stale')
@@ -396,7 +491,7 @@ class HallwayNavigator(Node):
                     if abs(error) > math.pi/2:
                         if duty != (0, 0):
                             sign = -self.turn_progress.direction
-                            duty = (193*sign, 193*sign)
+                            duty = (TURN_DUTY*sign, TURN_DUTY*sign)
                     elif duty != (0, 0) and (-1 if duty[0] > 0 else 1) != self.turn_progress.direction:
                         self.pause('Turn target changed direction; replanning')
                         return
@@ -420,7 +515,14 @@ class HallwayNavigator(Node):
                 self.pause('LiDAR clearance is insufficient for the requested motion')
                 return
             if now - self.last_wheel_command >= .2:
-                self.send_wheels(*duty)
+                if self.local_motion is not None:
+                    clearance=self.nearest_rear if self.reverse else self.nearest_front
+                    straight=self.grid.segment_free(pose[:2],
+                        (pose[0]+.6*math.cos(travel_yaw),pose[1]+.6*math.sin(travel_yaw)),self.clearance_m)
+                    speed=drive_duty(error,clearance,math.dist(pose[:2],self.goal),straight)
+                    self.local_motion.hold(math.degrees(error),-speed if self.reverse else speed)
+                else:
+                    self.send_wheels(*duty)
                 self.last_wheel_command = time.monotonic()
                 if self.reason == 'Turning to follow the planned route' and self.turn_progress is None:
                     self.turn_started = self.last_wheel_command
@@ -452,7 +554,14 @@ class HallwayNavigator(Node):
         status['localization'] = quality
         status['sweep_clearance_m'] = round(self.sweep_clearance, 3)
         status['turn'] = self.turn_diagnostics
-        status['drive_profile'] = dict(name='faster_demo', drive_pwm=DRIVE_DUTY,
+        status['motion_backend'] = 'esp_gyro' if self.local_motion is not None else 'legacy_ros'
+        status['onboard_turn'] = self.onboard_turn
+        status['remaining_goals'] = self.remaining_goals
+        status['visited'] = self.visited
+        status['total_stops'] = self.total_stops
+        status['heading_rad'] = pose[2]+self.forward_offset if pose else None
+        status['drive_profile'] = dict(name='smooth_demo', drive_pwm=DRIVE_DUTY,
+            straight_pwm=200, lookahead_m=.6, gyro_prediction_max_s=.2,
             arrival_tolerance_m=ARRIVAL_TOLERANCE_M,
             recovery_stable_s=RECOVERY_STABLE_S, turn_entry_rad=TURN_ENTRY_RAD)
         status['path'] = self.path

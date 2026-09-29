@@ -5,6 +5,7 @@ const state = {
   live: { state: "disconnected", model_state: "idle", recording: false },
   captures: [],
   runs: [],
+  reports: [],
   models: [],
   jobs: { active_job: null, jobs: [] },
   sensorHistory: [],
@@ -21,6 +22,14 @@ const state = {
   imuImpactUntil: 0,
   yawZero: null,
   attitudeOverlay: false,
+  semanticObjects: [],
+  semanticRegistry: null,
+  semanticRun: null,
+  semanticSelected: null,
+  semanticFilter: "all",
+  rover: { connected: false, status: null, activeCommand: null, repeatTimer: null, requestPending: false },
+  gamepad: { running: false },
+  autonomy: { state: "idle", running: false },
 };
 
 const SENSOR_POLL_INTERVAL_MS = 100;  // 10 Hz; matches the HC-SR04 firmware cadence
@@ -31,7 +40,11 @@ const ENV_COLORS = { temperature: "#ff7433", humidity: "#29d3c2", distance: "#ff
 
 const tabMeta = {
   live: ["OPERATIONS", "Live inspection"],
+  expedition: ["FIELD SESSION", "Rover expedition"],
+  setup: ["DEVICE NETWORK", "Setup"],
+  control: ["REMOTE OPERATIONS", "Drive rover"],
   captures: ["EVIDENCE", "Captured photos"],
+  reports: ["INSPECTION", "Mining reports"],
   reconstructions: ["SPATIAL OUTPUT", "3D reconstructions"],
   models: ["MODEL LIBRARY", "Depth Anything 3 models"],
 };
@@ -55,9 +68,28 @@ async function api(path, options = {}) {
   let body = null;
   try { body = await response.json(); } catch { /* no JSON response */ }
   if (!response.ok) {
-    throw new Error(body?.detail || body?.error || `Request failed (${response.status})`);
+    throw new Error(formatApiError(body?.detail ?? body?.error, response.status));
   }
   return body;
+}
+
+function formatApiError(detail, status) {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const messages = detail.map((item) => {
+      if (typeof item === "string") return item;
+      const location = Array.isArray(item?.loc) ? item.loc.filter((part) => part !== "body").join(".") : "";
+      const message = item?.msg || item?.message || item?.error;
+      return message ? `${location ? `${location}: ` : ""}${message}` : JSON.stringify(item);
+    }).filter(Boolean);
+    if (messages.length) return messages.join(" · ");
+  }
+  if (detail && typeof detail === "object") {
+    const nested = detail.message ?? detail.error ?? detail.detail ?? detail.msg;
+    if (nested !== undefined) return formatApiError(nested, status);
+    try { return JSON.stringify(detail); } catch { /* use fallback below */ }
+  }
+  return `Request failed (${status})`;
 }
 
 function toast(title, message = "", kind = "info") {
@@ -75,6 +107,9 @@ function setTab(name) {
   $("#pageEyebrow").textContent = eyebrow;
   $("#pageTitle").textContent = title;
   if (name === "captures") refreshCaptures();
+  if (name === "reports") { refreshInspectionReports(); refreshExpeditionMap(); }
+  if (name === "expedition") refreshExpeditionMap();
+  if (name === "control") updateDriveStream(true);
   if (name === "reconstructions") { refreshRuns(); refreshJobs(); }
   if (name === "models") refreshModels();
 }
@@ -113,33 +148,105 @@ async function refreshHealth() {
   }
 }
 
-function attachStreams() {
-  if (state.streamsAttached) return;
-  const nonce = Date.now();
-  $("#rawStream").src = `/api/live/raw.mjpg?t=${nonce}`;
-  $("#depthStream").src = `/api/live/depth.mjpg?t=${nonce}`;
+function attachStreams(depthEnabled = true, semanticEnabled = false) {
+  if (!state.streamsAttached) {
+    $("#rawStream").src = `/api/live/raw.mjpg?t=${Date.now()}`;
+  }
+  if (depthEnabled) {
+    if (!$("#depthStream").getAttribute("src")) {
+      $("#depthStream").src = `/api/live/depth.mjpg?t=${Date.now()}`;
+    }
+  } else {
+    $("#depthStream").removeAttribute("src");
+    $("#depthFrameWrap").classList.remove("streaming");
+  }
+  if (semanticEnabled) {
+    if (!$("#semanticStream").getAttribute("src")) {
+      $("#semanticStream").src = `/api/live/semantic.mjpg?t=${Date.now()}`;
+    }
+  } else {
+    $("#semanticStream").removeAttribute("src");
+    $("#semanticFrameWrap").classList.remove("streaming");
+  }
   state.streamsAttached = true;
+  applyFeedVisibility();
+}
+
+function applyFeedVisibility(save = false) {
+  const visibility = {
+    raw: Boolean($("#showRawFeed")?.checked),
+    depth: Boolean($("#showDepthFeed")?.checked),
+    semantic: Boolean($("#showSemanticFeed")?.checked),
+  };
+  $("#rawStreamCard").hidden = !visibility.raw;
+  $("#depthStreamCard").hidden = !visibility.depth;
+  $("#semanticStreamCard").hidden = !visibility.semantic;
+  if (save) localStorage.setItem("pitdivers.feedVisibility", JSON.stringify(visibility));
 }
 
 function detachStreams() {
   $("#rawStream").removeAttribute("src");
   $("#depthStream").removeAttribute("src");
+  $("#semanticStream").removeAttribute("src");
   $("#rawFrameWrap").classList.remove("streaming");
   $("#depthFrameWrap").classList.remove("streaming");
+  $("#semanticFrameWrap").classList.remove("streaming");
+  $("#driveCamera").removeAttribute("src");
+  $("#driveCameraWrap").classList.remove("streaming");
   state.streamsAttached = false;
+}
+
+function updateDriveStream(force = false) {
+  const live = state.live;
+  const cameraReady = Boolean(live.width && live.height);
+  const wantsOriginal = $("#driveViewSource")?.value === "original";
+  const wantsDetection = Boolean($("#driveDetection")?.checked);
+  const detectionReady = wantsDetection && live.semantic_enabled === true && live.semantic_state === "ready";
+  const path = wantsOriginal
+    ? "/api/live/original.mjpg"
+    : detectionReady
+      ? "/api/live/semantic.mjpg"
+      : "/api/live/raw.mjpg";
+  const camera = $("#driveCamera");
+  if (live.state === "disconnected") {
+    camera?.removeAttribute("src");
+  } else if (camera && (force || !camera.src.includes(path))) {
+    camera.src = `${path}?drive=${Date.now()}`;
+  }
+  $("#driveCameraWrap")?.classList.toggle("streaming", cameraReady);
+  $("#driveNavDot")?.classList.toggle("on", live.state === "live" && state.rover.connected);
+  const badge = $("#driveVisionState");
+  if (!badge) return;
+  badge.textContent = !cameraReady
+    ? "Camera offline"
+    : wantsOriginal
+      ? "Original feed"
+      : detectionReady
+        ? "Detection on"
+        : wantsDetection
+          ? "Detection unavailable"
+          : "Detection off";
+  badge.classList.toggle("accent", detectionReady);
 }
 
 function renderLiveStatus() {
   const live = state.live;
   const connected = live.state !== "disconnected";
+  const depthEnabled = connected
+    ? live.depth_enabled !== false
+    : Boolean($("#liveModel")?.value);
+  const semanticEnabled = connected
+    ? live.semantic_enabled === true
+    : $("#semanticEnabled")?.value === "true";
   const cameraReady = Boolean(live.width && live.height);
-  const modelReady = live.model_state === "ready";
-  const failed = live.state === "error" || live.model_state === "error";
+  const modelReady = !depthEnabled || live.model_state === "ready";
+  const failed = live.state === "error" || (depthEnabled && live.model_state === "error");
   const busy = connected && (!cameraReady || !modelReady);
 
-  if (connected) attachStreams(); else detachStreams();
+  if (connected) attachStreams(depthEnabled, semanticEnabled); else detachStreams();
   $("#rawFrameWrap").classList.toggle("streaming", cameraReady);
-  $("#depthFrameWrap").classList.toggle("streaming", modelReady && Boolean(live.inference_ms));
+  $("#depthFrameWrap").classList.toggle("streaming", depthEnabled && modelReady && Boolean(live.inference_ms));
+  $("#semanticFrameWrap").classList.toggle("streaming", semanticEnabled && live.semantic_state === "ready" && Boolean(live.semantic_fps));
   $("#liveNavDot").classList.toggle("on", live.state === "live");
 
   const dot = $("#liveStatusDot");
@@ -148,7 +255,7 @@ function renderLiveStatus() {
   let detail = "Enter the ESP32 URL to begin";
   if (connected) {
     title = live.state === "reconnecting" ? "Reconnecting camera" : cameraReady ? "Camera connected" : "Connecting camera";
-    detail = live.error || (modelReady ? `${live.model_id} ready` : `Loading ${live.model_id || "DA3"}…`);
+    detail = live.error || live.camera_profile_error || (!depthEnabled ? "Camera-only mode · depth processing off" : modelReady ? `${live.model_id} ready` : `Loading ${live.model_id || "DA3"}…`);
   }
   if (failed) title = "Attention required";
   $("#liveStatusText").textContent = title;
@@ -160,8 +267,11 @@ function renderLiveStatus() {
   connectButton.classList.toggle("primary", !connected);
   $("#streamUrl").disabled = connected;
   $("#liveModel").disabled = connected;
-  $("#processRes").disabled = connected;
-  $("#inferenceFps").disabled = connected;
+  $("#semanticEnabled").disabled = connected;
+  $("#cameraProfile").disabled = connected;
+  $("#processRes").disabled = connected || !depthEnabled;
+  $("#inferenceFps").disabled = connected || !depthEnabled;
+  $("#semanticFps").disabled = connected || !semanticEnabled;
   if (connected && Number.isFinite(live.inference_fps)) {
     $("#inferenceFps").value = String(live.inference_fps);
   }
@@ -170,18 +280,102 @@ function renderLiveStatus() {
   recordButton.disabled = !cameraReady;
   recordButton.classList.toggle("active", Boolean(live.recording));
   recordButton.innerHTML = `<span></span>${live.recording ? "Stop recording" : "Start recording"}`;
+  const inspectionCamera = $("#inspectionCamera");
+  if (cameraReady && !inspectionCamera.src.endsWith("/api/live/raw.mjpg")) inspectionCamera.src = "/api/live/raw.mjpg";
+  if (!cameraReady && inspectionCamera.getAttribute("src")) inspectionCamera.removeAttribute("src");
+  inspectionCamera.hidden = !cameraReady;
+  $("#expeditionCameraState").textContent = cameraReady ? (live.recording ? "Recording" : "Live") : "Offline";
+  $("#expeditionCameraEmpty").hidden = cameraReady;
+  if (cameraReady && !$("#expeditionCamera").src.endsWith("/api/live/raw.mjpg")) $("#expeditionCamera").src = "/api/live/raw.mjpg";
+  if (!cameraReady) $("#expeditionCamera").removeAttribute("src");
+  $("#inspectionCameraPlaceholder").hidden = cameraReady;
+  $("#inspectionCameraStatus").textContent = cameraReady ? "Camera live" : "Camera disconnected";
+  $("#inspectionCaptureStatus").textContent = live.recording ? `Recording ${live.recording_name} · ${live.frames_saved || 0} keyframes` : "Not recording";
+  $("#inspectionRecordButton").disabled = !cameraReady;
+  $("#inspectionRecordButton").textContent = live.recording ? "Stop recording" : "Start recording";
   $("#captureName").disabled = Boolean(live.recording);
   $("#keyframeFps").disabled = Boolean(live.recording);
   $("#stableOnly").disabled = Boolean(live.recording);
 
   $("#cameraResolution").textContent = cameraReady ? `${live.width} × ${live.height}` : "No signal";
   $("#cameraFps").textContent = live.capture_fps ? live.capture_fps.toFixed(1) : "—";
-  $("#depthFps").textContent = live.depth_fps ? live.depth_fps.toFixed(1) : "—";
-  $("#inferenceTime").textContent = live.inference_ms ? `${live.inference_ms} ms` : "—";
+  $("#depthFps").textContent = !depthEnabled ? "Off" : live.depth_fps ? live.depth_fps.toFixed(1) : "—";
+  $("#inferenceTime").textContent = !depthEnabled ? "Off" : live.inference_ms ? `${live.inference_ms} ms` : "—";
   $("#framesSaved").textContent = String(live.frames_saved || 0);
   $("#recordingSession").textContent = live.recording ? live.recording_name : "Not recording";
-  $("#depthModelPill").textContent = modelName(live.model_id);
+  $("#depthModelPill").textContent = depthEnabled ? modelName(live.model_id) : "OFF";
+  $("#semanticModelPill").textContent = !semanticEnabled ? "OFF" : live.semantic_state === "error" ? "ERROR" : live.semantic_state === "ready" ? "YOLOE · READY" : "LOADING";
+  $("#semanticEmptyTitle").textContent = !semanticEnabled ? "Semantic disabled" : live.semantic_state === "error" ? "Semantic error" : "Semantic idle";
+  $("#semanticEmptyDetail").textContent = live.semantic_error || (!semanticEnabled ? "Enable live semantics before connecting" : "YOLOE loads after the stream connects");
+  $("#semanticObjectsCount").textContent = semanticEnabled && Array.isArray(live.semantic_objects) ? String(live.semantic_objects.length) : "—";
+  $("#semanticPoseState").textContent = live.semantic_pose_state === "view-local" ? "View-local · pose pending" : "World anchored";
+  $("#depthEmptyTitle").textContent = depthEnabled ? "Depth idle" : "Depth disabled";
+  $("#depthEmptyDetail").textContent = depthEnabled ? "The model loads after the stream connects" : "Camera and sensor recording continue without GPU inference";
   renderDepthStats(live.depth_stats);
+  const enhancement = connected
+    ? (live.low_light || { mode: "off", strength: 55, model_state: "idle" })
+    : { mode: $("#lowLightMode")?.value || "fast", strength: Number($("#lowLightStrength")?.value || 55), model_state: $("#lowLightMode")?.value === "off" ? "idle" : "ready" };
+  if (connected && $("#lowLightMode") && document.activeElement !== $("#lowLightMode")) $("#lowLightMode").value = enhancement.mode;
+  if (connected && $("#lowLightStrength") && document.activeElement !== $("#lowLightStrength")) $("#lowLightStrength").value = String(enhancement.strength);
+  if ($("#lowLightStrengthValue")) $("#lowLightStrengthValue").textContent = `${enhancement.strength}%`;
+  renderEnhancementStatus(enhancement);
+  updateDriveStream();
+  updateRecordingTimer();
+}
+
+function renderEnhancementStatus(enhancement) {
+  const mode = enhancement.mode || "off";
+  const failed = enhancement.model_state === "error";
+  const busy = enhancement.model_state === "loading";
+  const dot = $("#enhancementStatusDot");
+  if (!dot) return;
+  dot.className = `status-dot ${failed ? "error" : busy ? "busy" : mode === "off" ? "" : "online"}`;
+  $("#enhancementStatus").textContent = failed ? "Enhancement fallback" : mode === "ai" ? "SCUNet neural denoise" : mode === "fast" ? "Fast enhancement" : "Original image";
+  $("#enhancementDetail").textContent = enhancement.error || (mode === "ai"
+    ? `${enhancement.processing_ms || 0} ms · ${(enhancement.provider || "cpu").toUpperCase()} neural denoise + adaptive illumination`
+    : mode === "fast"
+      ? `${enhancement.processing_ms || 0} ms · temporal denoise + adaptive illumination`
+      : "No processing applied");
+}
+
+let enhancementTimer = null;
+function applyLowLightSettings(immediate = false) {
+  window.clearTimeout(enhancementTimer);
+  const apply = async () => {
+    const mode = $("#lowLightMode").value;
+    const strength = Number($("#lowLightStrength").value);
+    localStorage.setItem("pitdivers.lowLightMode", mode);
+    localStorage.setItem("pitdivers.lowLightStrength", String(strength));
+    $("#lowLightStrengthValue").textContent = `${strength}%`;
+    try {
+      const enhancement = await api("/api/live/enhancement", { method: "POST", body: { mode, strength } });
+      state.live.low_light = enhancement;
+      renderEnhancementStatus(enhancement);
+      if ($("#driveViewSource").value === "enhanced") updateDriveStream(true);
+    } catch (error) {
+      toast("Enhancement update failed", error.message, "error");
+    }
+  };
+  if (immediate) apply(); else enhancementTimer = window.setTimeout(apply, 180);
+}
+
+function formatRecordingDuration(totalSeconds) {
+  const seconds = Math.max(0, Math.floor(totalSeconds));
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  const remainder = seconds % 60;
+  const clock = `${String(minutes).padStart(2, "0")}:${String(remainder).padStart(2, "0")}`;
+  return hours ? `${String(hours).padStart(2, "0")}:${clock}` : clock;
+}
+
+function updateRecordingTimer() {
+  const timer = $("#recordingTimer");
+  const startedAt = Date.parse(state.live.recording_started_at || "");
+  const active = Boolean(state.live.recording && Number.isFinite(startedAt));
+  timer.hidden = !active;
+  timer.querySelector("time").textContent = active
+    ? formatRecordingDuration((Date.now() - startedAt) / 1000)
+    : "00:00";
 }
 
 function confidenceLabel(score) {
@@ -235,19 +429,24 @@ async function refreshLiveStatus(silent = true) {
 
 async function refreshSensors() {
   try {
-    const sensor = await api("/api/sensors");
+    const sensor = await api(`/api/sensors?base_url=${encodeURIComponent($("#setupSensorUrl").value.trim())}`);
     const dhtValid = sensor.dht_ok !== false && Number.isFinite(sensor.temperature_c) && Number.isFinite(sensor.humidity_percent);
     const sonarValid = sensor.sonar_ok === true && Number.isFinite(sensor.distance_cm);
     const imuValid = sensor.mpu_ok === true
-      && [sensor.accel_g?.x, sensor.accel_g?.y, sensor.accel_g?.z, sensor.gyro_dps?.x, sensor.gyro_dps?.y, sensor.gyro_dps?.z, sensor.tilt_deg?.roll, sensor.tilt_deg?.pitch, sensor.tilt_deg?.yaw, sensor.mpu_temperature_c].every(Number.isFinite);
+      && [sensor.accel_g?.x, sensor.accel_g?.y, sensor.accel_g?.z, sensor.gyro_dps?.x, sensor.gyro_dps?.y, sensor.gyro_dps?.z, sensor.tilt_deg?.roll, sensor.tilt_deg?.pitch, sensor.tilt_deg?.yaw].every(Number.isFinite);
+    updateExpeditionTelemetry(sensor, dhtValid, imuValid);
     if (!dhtValid && !sonarValid && !imuValid) {
       throw new Error(sensor.error || "No sensor readings available");
     }
     if (dhtValid) {
       setEnvValue("temperature", sensor.temperature_c, "°C");
       setEnvValue("humidity", sensor.humidity_percent, "%");
+      $("#inspectionTemperature").textContent = `${sensor.temperature_c.toFixed(1)} °C`;
+      $("#inspectionHumidity").textContent = `${sensor.humidity_percent.toFixed(1)} % RH`;
     } else {
       setEnvOffline(["temperature", "humidity"]);
+      $("#inspectionTemperature").textContent = "—";
+      $("#inspectionHumidity").textContent = "—";
     }
     if (sonarValid) {
       state.currentDistance = sensor.distance_cm;
@@ -271,11 +470,24 @@ async function refreshSensors() {
     }
     drawSensorCharts();
   } catch (error) {
+    updateExpeditionTelemetry(null, false, false);
+    $("#inspectionTemperature").textContent = "—";
+    $("#inspectionHumidity").textContent = "—";
     state.currentDistance = null;
     setEnvOffline();
     setImuOffline();
     drawSensorCharts();
   }
+}
+
+function updateExpeditionTelemetry(sensor, dhtValid, imuValid) {
+  $("#expeditionTemperature").textContent = dhtValid ? `${sensor.temperature_c.toFixed(1)} °C` : "—";
+  $("#expeditionHumidity").textContent = dhtValid ? `${sensor.humidity_percent.toFixed(1)} % RH` : "—";
+  $("#expeditionRoll").textContent = imuValid ? `${sensor.tilt_deg.roll.toFixed(1)}°` : "—";
+  $("#expeditionPitch").textContent = imuValid ? `${sensor.tilt_deg.pitch.toFixed(1)}°` : "—";
+  $("#expeditionYaw").textContent = imuValid ? `${sensor.tilt_deg.yaw.toFixed(1)}°` : "—";
+  $("#expeditionAccel").textContent = imuValid ? [sensor.accel_g.x, sensor.accel_g.y, sensor.accel_g.z].map(value => value.toFixed(2)).join(" / ") + " g" : "—";
+  $("#expeditionGyro").textContent = imuValid ? [sensor.gyro_dps.x, sensor.gyro_dps.y, sensor.gyro_dps.z].map(value => value.toFixed(1)).join(" / ") + " °/s" : "—";
 }
 
 function envStatus(kind, value) {
@@ -745,7 +957,7 @@ function setImuValues(sensor) {
   state.currentImu = sensor;
   const setAxis = (selector, value, digits, unit = "") => {
     const element = $(selector);
-    if (element) element.innerHTML = `${value.toFixed(digits)}${unit ? `<small>${unit}</small>` : ""}`;
+    if (element) element.innerHTML = Number.isFinite(value) ? `${value.toFixed(digits)}${unit ? `<small>${unit}</small>` : ""}` : "—";
   };
   const roll = sensor.tilt_deg.roll;
   const pitch = sensor.tilt_deg.pitch;
@@ -909,18 +1121,29 @@ async function toggleConnection() {
     } else {
       const streamUrl = $("#streamUrl").value.trim();
       if (streamUrl.includes("[") || streamUrl.includes("](") || !/^https?:\/\//i.test(streamUrl)) {
-        throw new Error("Use the raw URL, for example http://192.168.0.69:81/stream");
+        throw new Error("Use the raw camera URL, for example http://192.168.0.119/jpg");
       }
       await api("/api/live/connect", {
         method: "POST",
         body: {
           stream_url: streamUrl,
-          model_id: $("#liveModel").value,
+          sensor_base_url: $("#setupSensorUrl").value.trim(),
+          model_id: $("#liveModel").value || "depth-anything/DA3-BASE",
           process_res: Number($("#processRes").value),
           inference_fps: Number($("#inferenceFps").value),
+          depth_enabled: Boolean($("#liveModel").value),
+          semantic_enabled: $("#semanticEnabled").value === "true",
+          semantic_fps: Number($("#semanticFps").value),
+          camera_profile: $("#cameraProfile").value,
+          low_light_mode: $("#lowLightMode").value,
+          low_light_strength: Number($("#lowLightStrength").value),
+          rotation: Number($("#cameraRotation").value),
         },
       });
-      toast("Connecting", "Camera appears first; DA3 depth follows after the model loads.");
+      localStorage.setItem("pitdivers.cameraUrl", streamUrl);
+      toast("Connecting", $("#liveModel").value
+        ? "Camera appears first; DA3 depth follows after the model loads."
+        : "Camera-only mode; depth inference will not load.");
     }
     await refreshLiveStatus(false);
   } catch (error) {
@@ -928,6 +1151,293 @@ async function toggleConnection() {
   } finally {
     button.disabled = false;
   }
+}
+
+function roverBaseUrl() {
+  return $("#roverUrl").value.trim().replace(/\/$/, "");
+}
+
+function updateDriveControlAvailability() {
+  const automated = Boolean(state.gamepad.running || state.autonomy.running);
+  $$('[data-rover-command]').forEach((button) => {
+    button.disabled = !state.rover.connected || automated;
+  });
+  $("#roverEmergencyStop").disabled = !state.rover.connected && !automated;
+}
+
+function renderRoverStatus() {
+  const rover = state.rover;
+  const dot = $("#roverStatusDot");
+  const status = rover.status || {};
+  dot.className = `status-dot ${rover.connected ? "online" : ""}`;
+  $("#roverStatusText").textContent = rover.connected ? "Controls connected" : "Not connected";
+  $("#roverStatusDetail").textContent = rover.connected
+    ? `${status.mode || "human"} mode · ${status.motion || "stopped"} · speed ${status.speed ?? $("#roverSpeed").value}`
+    : "Connect the separate motion controller";
+  $("#roverConnectButton").textContent = rover.connected ? "Disconnect controls" : "Connect controls";
+  $("#roverUrl").disabled = rover.connected;
+  $("#expeditionDriveState").textContent = rover.connected ? "Connected" : "Disconnected";
+  updateDriveControlAvailability();
+  updateDriveStream();
+}
+
+async function refreshRoverStatus(silent = true) {
+  if (!state.rover.connected) return;
+  try {
+    state.rover.status = await api(`/api/rover/status?base_url=${encodeURIComponent(roverBaseUrl())}`);
+    renderRoverStatus();
+  } catch (error) {
+    stopRoverDrive(false);
+    state.rover.connected = false;
+    state.rover.status = null;
+    renderRoverStatus();
+    if (!silent) toast("Rover unavailable", error.message, "error");
+  }
+}
+
+async function toggleRoverConnection() {
+  const button = $("#roverConnectButton");
+  button.disabled = true;
+  try {
+    if (state.rover.connected) {
+      await stopRoverDrive(true);
+      state.rover.connected = false;
+      state.rover.status = null;
+      toast("Rover controls disconnected");
+    } else {
+      const baseUrl = roverBaseUrl();
+      if (!/^https?:\/\/[^\s]+$/i.test(baseUrl)) throw new Error("Use the rover ESP URL, for example http://192.168.0.70");
+      state.rover.status = await api("/api/rover/connect", { method: "POST", body: { base_url: baseUrl } });
+      state.rover.connected = true;
+      localStorage.setItem("pitdivers.roverUrl", baseUrl);
+      $("#setupWheelUrl").value = baseUrl;
+      toast("Rover controls ready", "Human mode enabled. Hold a direction to drive.");
+    }
+  } catch (error) {
+    state.rover.connected = false;
+    state.rover.status = null;
+    toast("Rover connection failed", error.message, "error");
+  } finally {
+    button.disabled = false;
+    renderRoverStatus();
+  }
+}
+
+async function sendRoverCommand(command, reportErrors = true) {
+  if (!state.rover.connected || (state.rover.requestPending && command !== "stop")) return;
+  state.rover.requestPending = true;
+  try {
+    await api("/api/rover/command", {
+      method: "POST",
+      body: { base_url: roverBaseUrl(), command, speed: Number($("#roverSpeed").value) },
+    });
+    state.rover.status = { ...(state.rover.status || {}), mode: "human", motion: command === "stop" ? "stopped" : command, speed: Number($("#roverSpeed").value) };
+    renderRoverStatus();
+  } catch (error) {
+    if (reportErrors) toast("Rover command failed", error.message, "error");
+  } finally {
+    state.rover.requestPending = false;
+  }
+}
+
+function startRoverDrive(command) {
+  if (!state.rover.connected || command === "stop" || state.rover.activeCommand === command) return;
+  stopRoverDrive(false);
+  state.rover.activeCommand = command;
+  $(`[data-rover-command="${command}"]`)?.classList.add("active");
+  sendRoverCommand(command);
+  state.rover.repeatTimer = window.setInterval(() => sendRoverCommand(command, false), 300);
+}
+
+async function stopRoverDrive(sendStop = true) {
+  if (state.rover.repeatTimer) window.clearInterval(state.rover.repeatTimer);
+  state.rover.repeatTimer = null;
+  state.rover.activeCommand = null;
+  $$('[data-rover-command]').forEach((button) => button.classList.remove("active"));
+  if (sendStop && state.rover.connected) await sendRoverCommand("stop");
+}
+
+function renderGamepadStatus() {
+  const running = Boolean(state.gamepad.running);
+  const pill = $("#gamepadStatus");
+  pill.textContent = running ? "Running" : "Stopped";
+  pill.classList.toggle("accent", running);
+  $("#gamepadStartButton").disabled = running;
+  $("#gamepadStopButton").disabled = !running;
+  updateDriveControlAvailability();
+}
+
+async function refreshGamepadStatus() {
+  try {
+    state.gamepad = await api("/api/gamepad/status");
+  } catch (error) {
+    state.gamepad = { running: false, error: error.message };
+  }
+  renderGamepadStatus();
+}
+
+async function startGamepadBridge() {
+  const button = $("#gamepadStartButton");
+  button.disabled = true;
+  try {
+    await stopRoverDrive(true);
+    state.gamepad = await api("/api/gamepad/start", {
+      method: "POST",
+      body: {
+        base_url: roverBaseUrl(),
+        api_key: $("#controlApiKey").value,
+        max_speed: Number($("#roverSpeed").value),
+      },
+    });
+    toast("Controller bridge started", "The PC is now reading the first XInput controller.");
+  } catch (error) {
+    toast("Controller could not start", error.message, "error");
+  } finally {
+    await refreshGamepadStatus();
+  }
+}
+
+async function stopGamepadBridge(report = true) {
+  try {
+    state.gamepad = await api("/api/gamepad/stop", { method: "POST" });
+    if (report) toast("Controller stopped", "The rover was returned to Human mode.");
+  } catch (error) {
+    if (report) toast("Controller stop failed", error.message, "error");
+  } finally {
+    renderGamepadStatus();
+  }
+}
+
+function renderAutonomyStatus() {
+  const status = state.autonomy || {};
+  const pill = $("#autonomyStatus");
+  pill.textContent = status.state || "idle";
+  pill.classList.toggle("accent", status.running || status.state === "arrived");
+  $("#autonomyDetail").textContent = status.message || "Connect the camera and motion ESP first.";
+  $("#autonomyStartButton").disabled = Boolean(status.running);
+  $("#autonomyStopButton").disabled = !status.running && !["blocked", "arrived", "error"].includes(status.state);
+  updateDriveControlAvailability();
+  renderAutonomyConsole();
+}
+
+function renderAutonomyConsole() {
+  const status = state.autonomy || {};
+  const body = $("#autonomyConsoleBody");
+  if (!body) return;
+  const stayAtBottom = body.scrollHeight - body.scrollTop - body.clientHeight < 50;
+  $("#autonomyConsoleStatus").textContent = status.state || "idle";
+  $("#autonomyConsoleStatus").classList.toggle("accent", Boolean(status.running) || status.state === "arrived");
+  $("#autonomyConsoleTarget").textContent = status.target || "—";
+  $("#autonomyConsoleAction").textContent = status.action || "stopped";
+  $("#autonomyConsoleSteps").textContent = String(status.steps || 0);
+  const logs = status.logs || [];
+  body.textContent = logs.length ? logs.map((entry) => {
+    const stamp = entry.at ? new Date(entry.at).toLocaleTimeString([], { hour12: false }) : "--:--:--";
+    return `[${stamp}] ${String(entry.level || "info").toUpperCase().padEnd(7)} ${entry.message}`;
+  }).join("\n") : "Waiting for an autonomy task…";
+  if (stayAtBottom) body.scrollTop = body.scrollHeight;
+}
+
+function openAutonomyConsole() {
+  renderAutonomyConsole();
+  const dialog = $("#autonomyConsoleDialog");
+  if (!dialog.open) dialog.showModal();
+  requestAnimationFrame(() => { $("#autonomyConsoleBody").scrollTop = $("#autonomyConsoleBody").scrollHeight; });
+}
+
+async function refreshAutonomyStatus() {
+  try {
+    state.autonomy = await api("/api/autonomy/status");
+  } catch (error) {
+    state.autonomy = { state: "error", running: false, message: error.message };
+  }
+  renderAutonomyStatus();
+}
+
+async function refreshOllamaModels() {
+  const url = $("#ollamaUrl").value;
+  try {
+    const result = await api(`/api/autonomy/models?ollama_url=${encodeURIComponent(url)}`);
+    $("#ollamaModels").innerHTML = (result.models || [])
+      .map((model) => `<option value="${escapeHtml(model)}"></option>`).join("");
+  } catch { /* Ollama is optional until Llama mode is enabled. */ }
+}
+
+function syncAutonomyMission() {
+  const exploring = $("#autonomyMission").value === "explore";
+  $("#autonomyTarget").disabled = exploring;
+  $("#ollamaModel").disabled = exploring;
+  $("#autonomyUseLlama").disabled = exploring;
+  $("#autonomyStartButton").textContent = exploring ? "Explore room" : "Find object";
+}
+
+async function startAutonomy() {
+  const button = $("#autonomyStartButton");
+  let startError = null;
+  button.disabled = true;
+  state.autonomy = {
+    ...(state.autonomy || {}), state: "starting", running: false,
+    logs: [{ at: new Date().toISOString(), level: "info", message: "Submitting autonomy task to the dashboard…" }],
+  };
+  openAutonomyConsole();
+  try {
+    const baseUrl = roverBaseUrl();
+    const apiKey = $("#controlApiKey").value.trim();
+    const mission = $("#autonomyMission").value;
+    const target = mission === "explore" ? "ROOM" : $("#autonomyTarget").value.trim();
+    const speed = Number($("#autonomySpeed").value);
+    const useVision = mission === "find" && $("#autonomyUseLlama").checked;
+    const model = $("#ollamaModel").value.trim();
+    if (!/^https?:\/\/[^\s]+$/i.test(baseUrl)) throw new Error("Enter the motion ESP URL, including http://");
+    if (!apiKey) throw new Error("Enter the motion ESP API key");
+    if (mission === "find" && !target) throw new Error("Enter the object you want the rover to find");
+    if (!Number.isFinite(speed) || speed < 60 || speed > 220) throw new Error("AI speed must be between 60 and 220");
+    if (useVision && !model) throw new Error("Select an installed Ollama vision model, such as gemma3:12b");
+    await stopRoverDrive(true);
+    state.autonomy = await api("/api/autonomy/start", {
+      method: "POST",
+      body: {
+        base_url: baseUrl,
+        api_key: apiKey,
+        mission,
+        target,
+        speed,
+        use_llama: useVision,
+        ollama_url: $("#ollamaUrl").value,
+        model,
+      },
+    });
+    toast("Autonomy started", mission === "explore" ? "Exploring with depth and sonar." : `Searching for ${state.autonomy.target}.`);
+  } catch (error) {
+    startError = error;
+    toast("Autonomy could not start", error.message, "error");
+  } finally {
+    await refreshAutonomyStatus();
+    if (startError) {
+      state.autonomy = {
+        ...(state.autonomy || {}), state: "error", running: false, message: startError.message,
+        logs: [...(state.autonomy.logs || []), { at: new Date().toISOString(), level: "error", message: startError.message }],
+      };
+      renderAutonomyStatus();
+    }
+    await refreshGamepadStatus();
+  }
+}
+
+async function stopAutonomy(report = true) {
+  try {
+    state.autonomy = await api("/api/autonomy/stop", { method: "POST" });
+    if (report) toast("Autonomy stopped", "The rover was stopped and returned to Human mode.");
+  } catch (error) {
+    if (report) toast("Autonomy stop failed", error.message, "error");
+  } finally {
+    renderAutonomyStatus();
+  }
+}
+
+async function emergencyStopAll() {
+  await Promise.allSettled([stopAutonomy(false), stopGamepadBridge(false), stopRoverDrive(true)]);
+  toast("Emergency stop sent", "Manual, controller, and AI motion were stopped.");
 }
 
 async function toggleRecording() {
@@ -967,18 +1477,30 @@ function modelName(modelId) {
 function populateModelSelects() {
   const liveSelect = $("#liveModel");
   const reconstructSelect = $("#reconstructModel");
-  const liveValue = liveSelect.value || "depth-anything/DA3-BASE";
+  const liveValue = liveSelect.options.length ? liveSelect.value : "depth-anything/DA3-BASE";
   const reconstructValue = reconstructSelect.value || "depth-anything/DA3-BASE";
   const options = state.models.map((model) => {
     const cached = model.cached ? "" : " · download first";
     return `<option value="${escapeHtml(model.id)}" ${model.cached ? "" : "disabled"}>${escapeHtml(model.name + cached)}</option>`;
   }).join("");
-  liveSelect.innerHTML = options;
+  liveSelect.innerHTML = `<option value="">Camera only · depth disabled</option>${options}`;
   reconstructSelect.innerHTML = options;
-  if ([...liveSelect.options].some((option) => option.value === liveValue && !option.disabled)) liveSelect.value = liveValue;
+  if (liveValue === "") liveSelect.value = "";
+  else if ([...liveSelect.options].some((option) => option.value === liveValue && !option.disabled)) liveSelect.value = liveValue;
   else if ([...liveSelect.options].some((option) => option.value === "depth-anything/DA3-BASE" && !option.disabled)) liveSelect.value = "depth-anything/DA3-BASE";
   if ([...reconstructSelect.options].some((option) => option.value === reconstructValue && !option.disabled)) reconstructSelect.value = reconstructValue;
-  else reconstructSelect.value = liveSelect.value;
+  else reconstructSelect.value = [...reconstructSelect.options].find((option) => !option.disabled)?.value || "";
+  syncDepthControls();
+}
+
+function syncDepthControls() {
+  const depthEnabled = Boolean($("#liveModel").value);
+  const semanticEnabled = $("#semanticEnabled").value === "true";
+  const connected = state.live.state !== "disconnected";
+  $("#processRes").disabled = connected || !depthEnabled;
+  $("#inferenceFps").disabled = connected || !depthEnabled;
+  $("#semanticFps").disabled = connected || !semanticEnabled;
+  if (!connected) renderLiveStatus();
 }
 
 async function refreshModels() {
@@ -1050,6 +1572,7 @@ function renderCaptures() {
         <div class="asset-meta"><span>${capture.images} photos</span><span>${formatBytes(capture.size_bytes)}</span><span>${capture.manifest?.frame_width ? `${capture.manifest.frame_width}×${capture.manifest.frame_height}` : ""}</span></div>
         <div class="asset-actions">
           <button class="button secondary" data-open-photos="${escapeHtml(capture.name)}">View photos</button>
+          ${capture.manifest?.video_file ? `<a class="button secondary" href="/api/captures/${encodeURIComponent(capture.name)}/video" target="_blank" rel="noopener">Video</a>` : ""}
           <button class="button primary" data-reconstruct="${escapeHtml(capture.name)}">Build 3D</button>
         </div>
       </div>
@@ -1275,15 +1798,16 @@ function renderRuns() {
     <article class="asset-card">
       <div class="asset-preview">
         ${run.thumbnail_url ? `<img src="${escapeHtml(run.thumbnail_url)}" alt="Depth preview for ${escapeHtml(run.name)}" loading="lazy" />` : `<div class="preview-placeholder">◇</div>`}
-        <span class="asset-type">GLB SCENE</span>
+        <span class="asset-type">${run.semantic ? "SEMANTIC GLB" : "GLB SCENE"}</span>
       </div>
       <div class="asset-body">
         <div class="asset-title-row"><h3>${escapeHtml(run.name)}</h3><time>${escapeHtml(formatDate(run.updated_at))}</time></div>
-        <div class="asset-meta"><span>${formatBytes(run.size_bytes)}</span><span>Interactive point cloud</span></div>
+        <div class="asset-meta"><span>${formatBytes(run.size_bytes)}</span><span>${run.semantic ? `${run.object_count} object candidates` : "Interactive point cloud"}</span></div>
         <div class="asset-actions">
           <button class="button primary" data-view-run="${escapeHtml(run.name)}">Open 3D viewer</button>
           <button class="button secondary" data-rename-run="${escapeHtml(run.name)}">Rename</button>
           <a class="button secondary" href="${escapeHtml(run.download_url)}">Download</a>
+          ${run.report_url ? `<a class="button secondary" href="${escapeHtml(run.report_url)}" target="_blank" rel="noopener">Evidence</a>` : ""}
         </div>
       </div>
     </article>`).join("");
@@ -1306,13 +1830,227 @@ async function renameRun(runName) {
   }
 }
 
-function openViewer(runName) {
+async function openViewer(runName) {
   const run = state.runs.find((item) => item.name === runName);
   if (!run) return;
   $("#viewerTitle").textContent = runName;
-  $("#sceneViewer").src = `${run.model_url}?t=${Date.now()}`;
+  const viewer = $("#sceneViewer");
+  viewer.setAttribute("auto-rotate", "");
+  viewer.cameraTarget = "auto auto auto";
+  viewer.cameraOrbit = "auto auto auto";
+  $("#semanticHotspot").hidden = true;
+  $("#clearSemanticHighlight").hidden = true;
+  viewer.src = `${run.model_url}?t=${Date.now()}`;
+  viewer.addEventListener("load", applySemanticReviewMaterials, {once: true});
   $("#downloadGlb").href = run.download_url;
+  const semanticPanel = $("#semanticViewerPanel");
+  semanticPanel.hidden = !run.semantic;
+  $("#semanticObjectList").innerHTML = "";
+  state.semanticObjects = [];
+  state.semanticRegistry = null;
+  state.semanticRun = runName;
+  state.semanticSelected = null;
+  $("#semanticInspector").hidden = true;
+  if (run.semantic) {
+    $("#semanticReportLink").href = run.report_url || run.objects_url;
+    try {
+      const registry = await api(run.objects_url);
+      state.semanticObjects = registry.objects;
+      state.semanticRegistry = registry;
+      renderSemanticObjects();
+    } catch (error) {
+      $("#semanticObjectList").innerHTML = `<p>Object registry unavailable: ${escapeHtml(error.message)}</p>`;
+    }
+  }
   $("#viewerDialog").showModal();
+}
+
+function applySemanticReviewMaterials() {
+  const rejected = new Set(state.semanticObjects
+    .filter((item) => semanticStatus(item) === "rejected")
+    .flatMap((item) => item.geometry_ids || [item.object_id]));
+  $("#sceneViewer").model?.materials?.forEach((material) => {
+    if (!rejected.has(material.name)) return;
+    try {
+      material.pbrMetallicRoughness.setBaseColorFactor([0.03, 0.03, 0.03, 0.02]);
+      material.setAlphaMode("BLEND");
+    } catch (error) { console.warn(`Could not hide rejected material ${material.name}`, error); }
+  });
+}
+
+function semanticStatus(item) {
+  return item.review?.status || "candidate";
+}
+
+function renderSemanticObjects() {
+  const objects = state.semanticObjects.filter((item) => state.semanticFilter === "all" || semanticStatus(item) === state.semanticFilter);
+  $("#semanticObjectCount").textContent = state.semanticObjects.filter((item) => semanticStatus(item) !== "rejected").length;
+  $("#semanticObjectList").innerHTML = objects.map((item) => `
+    <button type="button" class="semantic-object ${semanticStatus(item)} ${state.semanticSelected === item.object_id ? "selected" : ""}" data-semantic-object="${escapeHtml(item.object_id)}">
+      <span class="semantic-object-title"><strong>${escapeHtml(item.label)}</strong><span>${Math.round(item.confidence * 100)}%</span></span>
+      <p>${escapeHtml(item.object_id)} · ${item.observations} views · ${Number(item.point_count).toLocaleString()} points</p>
+      <p>${Math.round((item.surface_support || 0) * 100)}% surface support · ${semanticStatus(item)}</p>
+    </button>`).join("") || "<p class='semantic-empty'>No objects in this review state.</p>";
+}
+
+function showSemanticInspector(item) {
+  const calibration = state.semanticRegistry?.calibration;
+  const extent = item.bbox_max.map((value, index) => Math.max(0, Number(value) - Number(item.bbox_min[index])));
+  const scale = calibration?.meters_per_unit;
+  const suffix = scale ? "m" : "units";
+  const display = extent.map((value) => (value * (scale || 1)).toFixed(2));
+  $("#semanticInspector").hidden = false;
+  $("#semanticInspectorId").textContent = item.object_id;
+  $("#semanticLabel").value = item.label;
+  $("#semanticNote").value = item.review?.note || "";
+  $("#semanticDimensions").textContent = `Size X ${display[0]} × Y ${display[1]} × Z ${display[2]} ${suffix}`;
+  $("#semanticCalibrationStatus").textContent = scale
+    ? `Calibrated · ${Number(scale).toFixed(3)} metres per scene unit`
+    : "Relative DA3 units · enter one known dimension to set scale";
+  $("#semanticEvidence").innerHTML = (item.mask_files || []).slice(0, 4).map((mask) => {
+    const url = `/api/runs/${encodeURIComponent(state.semanticRun)}/semantic/${mask}`;
+    return `<a href="${escapeHtml(url)}" target="_blank" rel="noopener"><img src="${escapeHtml(url)}" alt="Evidence mask for ${escapeHtml(item.object_id)}"></a>`;
+  }).join("");
+  $("#semanticMergeTarget").innerHTML = `<option value="">Merge with…</option>${state.semanticObjects
+    .filter((candidate) => candidate.object_id !== item.object_id && semanticStatus(candidate) !== "rejected")
+    .map((candidate) => `<option value="${escapeHtml(candidate.object_id)}">${escapeHtml(candidate.object_id)} · ${escapeHtml(candidate.label)}</option>`).join("")}`;
+}
+
+function focusSemanticObject(objectId) {
+  const item = state.semanticObjects.find((candidate) => candidate.object_id === objectId);
+  if (!item) return;
+  state.semanticSelected = objectId;
+  showSemanticInspector(item);
+  const viewer = $("#sceneViewer");
+  const center = item.centroid_world.map(Number);
+  const size = item.bbox_max.map((value, index) => Number(value) - Number(item.bbox_min[index]));
+  const distance = Math.max(Math.hypot(...size) * 2.6, 0.12);
+  viewer.removeAttribute("auto-rotate");
+  const hotspot = $("#semanticHotspot");
+  const position = `${center[0]}m ${center[1]}m ${center[2]}m`;
+  hotspot.hidden = false;
+  hotspot.dataset.position = position;
+  $("#semanticHotspotLabel").textContent = objectId;
+  viewer.updateHotspot?.({name: "hotspot-selected", position});
+  $("#clearSemanticHighlight").hidden = false;
+  if (viewer.model?.materials) {
+    const semanticIds = new Set(state.semanticObjects.flatMap((candidate) => candidate.geometry_ids || [candidate.object_id]));
+    const selectedIds = new Set(item.geometry_ids || [item.object_id]);
+    viewer.model.materials.forEach((material) => {
+      try {
+        if (material.name === "geometry_0") {
+          material.pbrMetallicRoughness.setBaseColorFactor([0.13, 0.13, 0.13, 0.16]);
+          material.setAlphaMode("BLEND");
+        } else if (semanticIds.has(material.name)) {
+          const selected = selectedIds.has(material.name);
+          material.pbrMetallicRoughness.setBaseColorFactor(selected ? [1, 1, 1, 1] : [0.03, 0.03, 0.03, 0.02]);
+          material.setAlphaMode(selected ? "OPAQUE" : "BLEND");
+        }
+      } catch (error) {
+        console.warn(`Could not update material ${material.name}`, error);
+      }
+    });
+  }
+  viewer.cameraTarget = position;
+  viewer.cameraOrbit = `auto auto ${distance}m`;
+  viewer.jumpCameraToGoal?.();
+  renderSemanticObjects();
+}
+
+function clearSemanticHighlight() {
+  const viewer = $("#sceneViewer");
+  viewer.model?.materials?.forEach((material) => {
+    try {
+      material.pbrMetallicRoughness.setBaseColorFactor([1, 1, 1, 1]);
+      material.setAlphaMode("OPAQUE");
+    } catch (error) {
+      console.warn(`Could not reset material ${material.name}`, error);
+    }
+  });
+  $("#semanticHotspot").hidden = true;
+  $("#clearSemanticHighlight").hidden = true;
+  $$("[data-semantic-object]").forEach((button) => button.classList.remove("selected"));
+  state.semanticSelected = null;
+  $("#semanticInspector").hidden = true;
+  viewer.cameraTarget = "auto auto auto";
+  viewer.cameraOrbit = "auto auto auto";
+  viewer.jumpCameraToGoal?.();
+}
+
+async function reviewSemanticObject(status) {
+  const item = state.semanticObjects.find((candidate) => candidate.object_id === state.semanticSelected);
+  if (!item) return;
+  try {
+    const updated = await api(`/api/runs/${encodeURIComponent(state.semanticRun)}/semantic/review/${encodeURIComponent(item.object_id)}`, {
+      method: "POST",
+      body: {status, label: $("#semanticLabel").value, note: $("#semanticNote").value},
+    });
+    Object.assign(item, updated);
+    applySemanticReviewMaterials();
+    renderSemanticObjects();
+    showSemanticInspector(item);
+    toast("Object review saved", `${item.object_id} is ${status}.`);
+  } catch (error) { toast("Could not save review", error.message, "error"); }
+}
+
+async function reloadSemanticRegistry(selectedId = null) {
+  const run = state.runs.find((item) => item.name === state.semanticRun);
+  if (!run?.objects_url) return;
+  const registry = await api(`${run.objects_url}?t=${Date.now()}`);
+  state.semanticRegistry = registry;
+  state.semanticObjects = registry.objects;
+  state.semanticSelected = selectedId;
+  renderSemanticObjects();
+  const selected = state.semanticObjects.find((item) => item.object_id === selectedId);
+  if (selected) showSemanticInspector(selected);
+}
+
+async function calibrateSemanticScene() {
+  const knownSize = Number($("#semanticKnownSize").value);
+  if (!state.semanticSelected || !(knownSize > 0)) return toast("Known size required", "Enter the selected dimension in metres.", "error");
+  try {
+    const calibration = await api(`/api/runs/${encodeURIComponent(state.semanticRun)}/semantic/calibrate`, {
+      method: "POST",
+      body: {object_id: state.semanticSelected, axis: Number($("#semanticCalibrationAxis").value), known_extent_m: knownSize},
+    });
+    state.semanticRegistry.calibration = calibration;
+    showSemanticInspector(state.semanticObjects.find((item) => item.object_id === state.semanticSelected));
+    toast("Metric scale saved", `${Number(calibration.meters_per_unit).toFixed(3)} metres per scene unit.`);
+  } catch (error) { toast("Could not calibrate", error.message, "error"); }
+}
+
+async function mergeSemanticObjects() {
+  const target = $("#semanticMergeTarget").value;
+  if (!state.semanticSelected || !target) return;
+  try {
+    const merged = await api(`/api/runs/${encodeURIComponent(state.semanticRun)}/semantic/merge`, {
+      method: "POST",
+      body: {object_ids: [state.semanticSelected, target], label: $("#semanticLabel").value},
+    });
+    const removed = new Set([state.semanticSelected, target]);
+    state.semanticObjects = state.semanticObjects.filter((item) => !removed.has(item.object_id));
+    state.semanticObjects.push(merged);
+    state.semanticSelected = merged.object_id;
+    renderSemanticObjects();
+    focusSemanticObject(merged.object_id);
+    toast("Objects merged", `${merged.geometry_ids.length} geometry groups now share ${merged.object_id}.`);
+  } catch (error) { toast("Could not merge", error.message, "error"); }
+}
+
+async function splitSemanticObject() {
+  if (!state.semanticSelected) return;
+  try {
+    const result = await api(`/api/runs/${encodeURIComponent(state.semanticRun)}/semantic/split/${encodeURIComponent(state.semanticSelected)}`, {
+      method: "POST", body: {axis: Number($("#semanticSplitAxis").value)},
+    });
+    const childId = result.objects[0].object_id;
+    await reloadSemanticRegistry(childId);
+    const run = state.runs.find((item) => item.name === state.semanticRun);
+    const viewer = $("#sceneViewer");
+    viewer.addEventListener("load", () => focusSemanticObject(childId), {once: true});
+    viewer.src = `${run.model_url}?t=${Date.now()}`;
+    toast("Geometry split", `${state.semanticSelected} is ready for separate review.`);
+  } catch (error) { toast("Could not split", error.message, "error"); }
 }
 
 function closeDialog(dialog) {
@@ -1323,8 +2061,56 @@ function closeDialog(dialog) {
 }
 
 function bindEvents() {
+  $("#expeditionStart").addEventListener("click", startExpedition);
+  $("#expeditionStop").addEventListener("click", stopExpedition);
+  $("#expeditionEmergencyStop").addEventListener("click", emergencyStopAll);
+  $("#expeditionMapOpen").addEventListener("click", () => $("#expeditionMapDialog").showModal());
+  $("#reportMapOpen").addEventListener("click", () => $("#expeditionMapDialog").showModal());
   $$(".nav-item").forEach((button) => button.addEventListener("click", () => setTab(button.dataset.tab)));
   $("#connectButton").addEventListener("click", toggleConnection);
+  $("#driveDetection").addEventListener("change", () => updateDriveStream(true));
+  $("#driveViewSource").addEventListener("change", () => updateDriveStream(true));
+  $("#lowLightMode").addEventListener("change", () => applyLowLightSettings(true));
+  $("#lowLightStrength").addEventListener("input", () => applyLowLightSettings(false));
+  $("#roverConnectButton").addEventListener("click", toggleRoverConnection);
+  $("#roverSpeed").addEventListener("input", () => { $("#roverSpeedValue").textContent = $("#roverSpeed").value; });
+  $("#roverEmergencyStop").addEventListener("click", emergencyStopAll);
+  $("#gamepadStartButton").addEventListener("click", startGamepadBridge);
+  $("#gamepadStopButton").addEventListener("click", () => stopGamepadBridge(true));
+  $("#autonomyStartButton").addEventListener("click", startAutonomy);
+  $("#autonomyMission").addEventListener("change", syncAutonomyMission);
+  $("#autonomyStopButton").addEventListener("click", () => stopAutonomy(true));
+  $("#autonomyConsoleButton").addEventListener("click", openAutonomyConsole);
+  $("#autonomyConsoleStop").addEventListener("click", () => stopAutonomy(true));
+  ["showRawFeed", "showDepthFeed", "showSemanticFeed"].forEach((id) => {
+    $(`#${id}`).addEventListener("change", () => applyFeedVisibility(true));
+  });
+  $$('[data-rover-command]').forEach((button) => {
+    button.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      button.setPointerCapture?.(event.pointerId);
+      const command = button.dataset.roverCommand;
+      if (command === "stop") stopRoverDrive(true);
+      else startRoverDrive(command);
+    });
+    button.addEventListener("pointerup", () => stopRoverDrive(true));
+    button.addEventListener("pointercancel", () => stopRoverDrive(true));
+  });
+  const roverKeys = { w: "forward", arrowup: "forward", a: "left", arrowleft: "left", s: "backward", arrowdown: "backward", d: "right", arrowright: "right" };
+  window.addEventListener("keydown", (event) => {
+    if (event.repeat || /^(INPUT|SELECT|TEXTAREA)$/.test(event.target?.tagName || "")) return;
+    const command = roverKeys[event.key.toLowerCase()];
+    if (command && state.rover.connected) { event.preventDefault(); startRoverDrive(command); }
+    if (event.key === " " && state.rover.connected) { event.preventDefault(); stopRoverDrive(true); }
+  });
+  window.addEventListener("keyup", (event) => {
+    const command = roverKeys[event.key.toLowerCase()];
+    if (command && state.rover.activeCommand === command) { event.preventDefault(); stopRoverDrive(true); }
+  });
+  window.addEventListener("blur", () => stopRoverDrive(true));
+  document.addEventListener("visibilitychange", () => { if (document.hidden) stopRoverDrive(true); });
+  $("#liveModel").addEventListener("change", syncDepthControls);
+  $("#semanticEnabled").addEventListener("change", syncDepthControls);
   $("#recordButton").addEventListener("click", toggleRecording);
   $("#tiltLimit").addEventListener("input", () => {
     $("#tiltLimitValue").textContent = `${Number($("#tiltLimit").value).toFixed(0)}°`;
@@ -1342,6 +2128,17 @@ function bindEvents() {
     overlay.setAttribute("aria-hidden", String(!state.attitudeOverlay));
   });
   $("#refreshButton").addEventListener("click", refreshAll);
+  $("#clearSemanticHighlight").addEventListener("click", clearSemanticHighlight);
+  $("#closeSemanticInspector").addEventListener("click", () => { $("#semanticInspector").hidden = true; });
+  $("#calibrateSemantic").addEventListener("click", calibrateSemanticScene);
+  $("#mergeSemantic").addEventListener("click", mergeSemanticObjects);
+  $("#splitSemantic").addEventListener("click", splitSemanticObject);
+  $$('[data-semantic-review]').forEach((button) => button.addEventListener("click", () => reviewSemanticObject(button.dataset.semanticReview)));
+  $$('[data-semantic-filter]').forEach((button) => button.addEventListener("click", () => {
+    state.semanticFilter = button.dataset.semanticFilter;
+    $$('[data-semantic-filter]').forEach((candidate) => candidate.classList.toggle("active", candidate === button));
+    renderSemanticObjects();
+  }));
   $("#reconstructForm").addEventListener("submit", submitReconstruction);
   $$('[data-go-live]').forEach((button) => button.addEventListener("click", () => setTab("live")));
   $$('[data-go-captures]').forEach((button) => button.addEventListener("click", () => setTab("captures")));
@@ -1370,6 +2167,7 @@ function bindEvents() {
     const zoomButton = event.target.closest("[data-photo-url]");
     const photoCell = event.target.closest("[data-frame]");
     const distanceCard = event.target.closest("[data-open-distance]");
+    const semanticObject = event.target.closest("[data-semantic-object]");
     if (photoButton) openPhotos(photoButton.dataset.openPhotos);
     if (reconstructButton) openReconstruct(reconstructButton.dataset.reconstruct);
     if (viewerButton) openViewer(viewerButton.dataset.viewRun);
@@ -1381,6 +2179,7 @@ function bindEvents() {
     if (renameButton) renameRun(renameButton.dataset.renameRun);
     if (popChartButton) openChartPopout(popChartButton.dataset.popChart);
     if (distanceCard) openDistanceDashboard();
+    if (semanticObject) focusSemanticObject(semanticObject.dataset.semanticObject);
     if (zoomButton) {
       $("#lightboxImage").src = zoomButton.dataset.photoUrl;
       $("#lightboxLabel").textContent = zoomButton.dataset.photoName;
@@ -1413,11 +2212,253 @@ function bindEvents() {
   });
   $("#rawStream").addEventListener("load", () => $("#rawFrameWrap").classList.add("streaming"));
   $("#depthStream").addEventListener("load", () => $("#depthFrameWrap").classList.add("streaming"));
+  $("#semanticStream").addEventListener("load", () => $("#semanticFrameWrap").classList.add("streaming"));
+}
+
+async function refreshInspectionReports() {
+  try {
+    const [captures, rooms, reports, remote] = await Promise.all([
+      api("/api/captures"), api("/api/inspection/rooms"), api("/api/inspection/reports"), api("/api/remote/da3/config"),
+    ]);
+    state.reports = reports;
+    const captureSelect = $("#reportCapture");
+    const roomSelect = $("#reportRoom");
+    const captureValue = captureSelect.value;
+    const roomValue = roomSelect.value;
+    captureSelect.innerHTML = captures.length
+      ? captures.map((item) => `<option value="${escapeHtml(item.name)}">${escapeHtml(item.name)} · ${item.images} frames</option>`).join("")
+      : '<option value="">No captures saved</option>';
+    roomSelect.innerHTML = rooms.length
+      ? rooms.map((item) => `<option value="${escapeHtml(item.id)}">${escapeHtml(item.id)} · ${escapeHtml(formatDate(item.updated_at))}</option>`).join("")
+      : '<option value="">No LiDAR rooms saved</option>';
+    if (captures.some((item) => item.name === captureValue)) captureSelect.value = captureValue;
+    if (rooms.some((item) => item.id === roomValue)) roomSelect.value = roomValue;
+    $("#remoteDa3Status").textContent = remote.configured
+      ? `DA3 PC: ${remote.url}`
+      : "Remote DA3 is not configured on this laptop. Set PITDIVERS_DA3_REMOTE_URL and PITDIVERS_REMOTE_TOKEN.";
+    $("#reportList").innerHTML = reports.length ? reports.map((item) => {
+      const base = `/api/inspection/reports/${encodeURIComponent(item.id)}`;
+      return `<article class="inspection-report-row"><div><strong>${escapeHtml(item.asset)}</strong><small>${escapeHtml(item.created_at)} · ${escapeHtml(item.capture)} · LiDAR ${escapeHtml(item.room_id)}</small><small>${escapeHtml(item.temperature)} · ${escapeHtml(item.humidity)}</small><small>${escapeHtml(item.source_association || "")}</small></div><div><a class="button primary" href="${base}/report.html" target="_blank" rel="noopener">Open interactive report</a><a class="button secondary" href="${base}/map.svg" target="_blank" rel="noopener">Map</a><a class="button secondary" href="${base}/temperature.svg" target="_blank" rel="noopener">Temperature</a><a class="button secondary" href="${base}/humidity.svg" target="_blank" rel="noopener">Humidity</a><a class="button secondary" href="${base}/source.json" download>LiDAR JSON</a>${item.sensor_file ? `<a class="button secondary" href="${base}/sensors.jsonl" download>Sensor data</a>` : ""}${item.video_url ? `<a class="button secondary" href="${escapeHtml(item.video_url)}" target="_blank" rel="noopener">Video</a>` : ""}${item.remote_model_url ? `<a class="button secondary" href="${escapeHtml(item.remote_model_url)}" target="_blank" rel="noopener">3D model</a>` : ""}</div></article>`;
+    }).join("") : '<p>No reports yet.</p>';
+  } catch (error) {
+    $("#reportProgress").textContent = error.message;
+  }
+}
+
+async function sendCaptureToDa3() {
+  const capture = $("#reportCapture").value;
+  const button = $("#sendDa3Button");
+  if (!capture) return;
+  button.disabled = true;
+  $("#remoteDa3Status").textContent = "Uploading selected frames to the DA3 PC…";
+  try {
+    const result = await api(`/api/remote/da3/send/${encodeURIComponent(capture)}`, { method: "POST" });
+    $("#remoteDa3Status").textContent = `DA3 queued on PC: ${result.job.id}. Click Check DA3 for progress.`;
+  } catch (error) {
+    $("#remoteDa3Status").textContent = error.message;
+    toast("DA3 transfer failed", error.message, "error");
+  } finally { button.disabled = false; }
+}
+
+async function checkRemoteDa3() {
+  const capture = $("#reportCapture").value;
+  if (!capture) return;
+  try {
+    const result = await api(`/api/remote/da3/status/${encodeURIComponent(capture)}`);
+    const link = result.model_url ? ` Model: ${result.model_url}` : "";
+    $("#remoteDa3Status").textContent = `DA3: ${result.state}${result.stage ? ` · ${result.stage}` : ""}${result.error ? ` · ${result.error}` : ""}${link}`;
+    if (result.model_url) {
+      for (const report of state.reports.filter(item => item.capture === capture && !item.model_file)) {
+        try { await api(`/api/inspection/reports/${encodeURIComponent(report.id)}/attach-model`, { method: "POST" }); }
+        catch (error) { $("#remoteDa3Status").textContent += ` · Could not add GLB to ${report.id}: ${error.message}`; }
+      }
+      await refreshInspectionReports();
+    }
+    if (result.model_url) window.open(result.model_url, "_blank", "noopener");
+  } catch (error) { $("#remoteDa3Status").textContent = error.message; }
+}
+
+async function createInspectionReport() {
+  const button = $("#createReportButton");
+  button.disabled = true;
+  $("#reportProgress").textContent = "Building report and evidence bundle…";
+  try {
+    const result = await api("/api/inspection/reports", {
+      method: "POST",
+      body: {
+        capture_name: $("#reportCapture").value,
+        room_id: $("#reportRoom").value,
+        asset: $("#reportAsset").value.trim(),
+        notes: $("#reportNotes").value.trim(),
+        use_ai: $("#reportUseAi").checked,
+        model: $("#reportModel").value.trim(),
+      },
+    });
+    $("#reportProgress").textContent = `Report ${result.id} created. AI: ${result.ai.status}.`;
+    await refreshInspectionReports();
+    window.open(`/api/inspection/reports/${encodeURIComponent(result.id)}/report.html`, "_blank", "noopener");
+  } catch (error) {
+    $("#reportProgress").textContent = error.message;
+    toast("Report failed", error.message, "error");
+  } finally {
+    button.disabled = false;
+  }
+}
+
+const expedition = { capture: null, roomId: null, reportId: null, remoteTimer: null, mapRevision: null };
+
+function drawMiniMap(canvas, room) {
+  const ctx = canvas.getContext("2d");
+  ctx.fillStyle = "#091720"; ctx.fillRect(0, 0, canvas.width, canvas.height);
+  const cells = room?.cells || [];
+  if (!cells.length) { ctx.fillStyle = "#a5b8c3"; ctx.fillText("Waiting for LiDAR map", 20, 35); return; }
+  let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+  for (const cell of cells) { x0 = Math.min(x0, cell[0]); x1 = Math.max(x1, cell[0]); y0 = Math.min(y0, cell[1]); y1 = Math.max(y1, cell[1]); }
+  const scale = Math.min((canvas.width - 28) / Math.max(1, x1 - x0 + 1), (canvas.height - 28) / Math.max(1, y1 - y0 + 1));
+  const ox = (canvas.width - (x1 - x0 + 1) * scale) / 2, oy = (canvas.height - (y1 - y0 + 1) * scale) / 2;
+  for (const [x, y, value] of cells) {
+    ctx.fillStyle = value > 1 ? "#c3d5dd" : value < -0.4 ? "#25465a" : "#3a5866";
+    ctx.fillRect(ox + (x - x0) * scale, oy + (y - y0) * scale, Math.max(1, scale), Math.max(1, scale));
+  }
+  const path = room.path || [];
+  if (path.length) {
+    ctx.strokeStyle = "#5fe0b6"; ctx.lineWidth = 2; ctx.beginPath();
+    path.forEach((p, i) => { const x = ox + (p[0] / room.resolution - x0) * scale, y = oy + (p[1] / room.resolution - y0) * scale; i ? ctx.lineTo(x,y) : ctx.moveTo(x,y); });
+    ctx.stroke();
+  }
+}
+
+function drawExpeditionMap(room) {
+  drawMiniMap($("#expeditionMap"), room);
+  drawMiniMap($("#reportMap"), room);
+}
+
+async function refreshExpeditionMap() {
+  if (!$("#page-expedition").classList.contains("active") && !$("#page-reports").classList.contains("active") && !expedition.capture) return;
+  try {
+    const map = await api("/api/expedition/map");
+    $("#expeditionMapState").textContent = `${map.network?.lidar?.running ? "Live" : "Last scan"} · ${map.map?.cells?.length || 0} cells`;
+    if (map.revision !== expedition.mapRevision) { expedition.mapRevision = map.revision; drawExpeditionMap(map.map); }
+    expedition.roomId = map.run_id || expedition.roomId;
+  } catch (error) { $("#expeditionMapState").textContent = "Map unavailable"; }
+}
+
+async function waitForExpeditionCamera() {
+  for (let i = 0; i < 25; i++) {
+    await refreshLiveStatus(false);
+    if (state.live.width && state.live.height) return;
+    await new Promise(resolve => setTimeout(resolve, 500));
+  }
+  throw new Error("Camera did not become ready. Check its URL in Setup.");
+}
+
+async function startExpedition() {
+  const button = $("#expeditionStart"); button.disabled = true;
+  let lidarStarted = false;
+  $("#expeditionStatus").textContent = "Connecting camera and rover…";
+  try {
+    if (state.live.recording) throw new Error("Another camera recording is already active.");
+    if (state.live.state === "disconnected") {
+      $("#liveModel").value = "";
+      $("#semanticEnabled").value = "false";
+      await toggleConnection();
+    }
+    await waitForExpeditionCamera();
+    if (!state.rover.connected) await toggleRoverConnection();
+    if (!state.rover.connected) throw new Error("Wheel controller is unavailable. Check Setup.");
+    await api("/api/expedition/lidar/start", { method: "POST" });
+    lidarStarted = true;
+    const capture = await api("/api/live/record/start", { method: "POST", body: {
+      name: `expedition_${new Date().toISOString().replace(/[^0-9]/g, "").slice(0, 14)}`,
+      keyframe_fps: 2, stable_only: false,
+    }});
+    expedition.capture = capture.name;
+    expedition.reportId = null;
+    $("#expeditionReportLink").hidden = true;
+    $("#expeditionStop").disabled = false;
+    $("#expeditionStatus").textContent = `Recording ${capture.name}. Camera, LiDAR and sensors are active.`;
+    await refreshLiveStatus(false);
+  } catch (error) {
+    if (lidarStarted) try { await api("/api/expedition/lidar/stop", { method: "POST" }); } catch { /* Keep the start error. */ }
+    $("#expeditionStatus").textContent = error.message;
+    toast("Expedition could not start", error.message, "error");
+    button.disabled = false;
+  }
+}
+
+async function finishExpeditionReport(capture, roomId) {
+  const key = $("#expeditionOpenRouterKey").value;
+  const asset = $("#expeditionAsset").value.trim() || `Expedition ${capture}`;
+  const model = $("#expeditionModel").value.trim();
+  const report = await api("/api/inspection/reports", { method: "POST", body: {
+    capture_name: capture, room_id: roomId, asset,
+    notes: $("#expeditionNotes").value.trim(), use_ai: true,
+    model, openrouter_api_key: key,
+  }});
+  $("#expeditionOpenRouterKey").value = "";
+  expedition.reportId = report.id;
+  const link = $("#expeditionReportLink");
+  link.href = `/api/inspection/reports/${encodeURIComponent(report.id)}/report.html`;
+  link.hidden = false;
+  $("#expeditionStatus").textContent = `HTML report ready · AI ${report.ai.status}. DA3 reconstruction continues on the PC.`;
+  await refreshInspectionReports();
+}
+
+async function watchExpeditionDa3(capture) {
+  clearInterval(expedition.remoteTimer);
+  let polls = 0;
+  expedition.remoteTimer = setInterval(async () => {
+    if (++polls > 240) { clearInterval(expedition.remoteTimer); $("#expeditionStatus").textContent = "DA3 is still processing. Check its status from Reports later."; return; }
+    try {
+      const job = await api(`/api/remote/da3/status/${encodeURIComponent(capture)}`);
+      if (job.state === "complete" && job.model_url) {
+        clearInterval(expedition.remoteTimer);
+        if (expedition.reportId) {
+          await api(`/api/inspection/reports/${encodeURIComponent(expedition.reportId)}/attach-model`, { method: "POST" });
+          $("#expeditionStatus").textContent = "DA3 GLB added to the HTML report. Reopen it to view the model.";
+        }
+      } else if (job.state === "failed") {
+        clearInterval(expedition.remoteTimer);
+        $("#expeditionStatus").textContent = `DA3 failed: ${job.error || "unknown error"}. The report remains available.`;
+      }
+    } catch (error) { $("#expeditionStatus").textContent = `Checking DA3: ${error.message}`; }
+  }, 5000);
+}
+
+async function stopExpedition() {
+  const button = $("#expeditionStop"); button.disabled = true;
+  await stopRoverDrive(true);
+  $("#expeditionStatus").textContent = "Saving video, sensor samples and LiDAR map…";
+  const capture = expedition.capture;
+  try {
+    if (state.live.recording) await api("/api/live/record/stop", { method: "POST" });
+    const saved = await api("/api/expedition/map/save", { method: "POST" });
+    expedition.roomId = saved.room_id || expedition.roomId;
+    try { await api("/api/expedition/lidar/stop", { method: "POST" }); } catch { /* Map is already saved. */ }
+    expedition.capture = null;
+    $("#expeditionStart").disabled = false;
+    if (!expedition.roomId) throw new Error("LiDAR room ID was not returned. The capture is saved; choose a room on Reports.");
+    $("#expeditionStatus").textContent = "Generating HTML report and sending frames to the DA3 PC…";
+    const [report, transfer] = await Promise.allSettled([
+      finishExpeditionReport(capture, expedition.roomId),
+      api(`/api/remote/da3/send/${encodeURIComponent(capture)}`, { method: "POST" }),
+    ]);
+    if (report.status === "rejected") $("#expeditionStatus").textContent = `Report failed: ${report.reason.message}. Capture ${capture} is saved.`;
+    if (transfer.status === "fulfilled") watchExpeditionDa3(capture);
+    else $("#expeditionStatus").textContent += ` DA3 transfer: ${transfer.reason.message}. Configure Tailscale on Setup/Reports and retry there.`;
+    await refreshLiveStatus(false);
+  } catch (error) {
+    try { await api("/api/expedition/lidar/stop", { method: "POST" }); } catch { /* Preserve the original error. */ }
+    expedition.capture = null;
+    $("#expeditionStatus").textContent = `${error.message} Capture ${capture || ""} is retained.`;
+    $("#expeditionStart").disabled = false;
+    toast("Expedition stop needs attention", error.message, "error");
+  }
 }
 
 async function refreshAll() {
   await Promise.allSettled([
-    refreshHealth(), refreshModels(), refreshLiveStatus(false), refreshSensors(), refreshCaptures(), refreshRuns(), refreshJobs(),
+    refreshHealth(), refreshModels(), refreshLiveStatus(false), refreshRoverStatus(), refreshGamepadStatus(), refreshAutonomyStatus(), refreshSensors(), refreshCaptures(), refreshRuns(), refreshJobs(), refreshInspectionReports(), window.PitMission?.refresh?.(),
   ]);
 }
 
@@ -1425,12 +2466,77 @@ function updateClock() {
   $("#clock").textContent = new Intl.DateTimeFormat(undefined, {
     weekday: "short", hour: "2-digit", minute: "2-digit", second: "2-digit",
   }).format(new Date());
+  updateRecordingTimer();
 }
 
 async function initialize() {
+  $("#setupDa3Save").addEventListener("click", async () => {
+    const button = $("#setupDa3Save"); button.disabled = true;
+    try {
+      const config = await api("/api/remote/da3/config", { method: "POST", body: {
+        url: $("#setupDa3Url").value.trim(), token: $("#setupDa3Token").value,
+      }});
+      $("#setupDa3Token").value = "";
+      $("#setupDa3Status").textContent = `DA3 PC configured: ${config.url}.`;
+    } catch (error) { $("#setupDa3Status").textContent = error.message; }
+    finally { button.disabled = false; }
+  });
+  try {
+    const config = await api("/api/remote/da3/config");
+    if (config.configured) { $("#setupDa3Url").value = config.url; $("#setupDa3Status").textContent = `DA3 PC configured: ${config.url}.`; }
+  } catch { /* Setup can continue without the remote PC. */ }
+  $("#setupCameraSave").addEventListener("click", () => {
+    const url = $("#setupCameraUrl").value.trim();
+    if (!/^https?:\/\/[^\s]+$/i.test(url)) return toast("Invalid camera URL", "Enter the camera stream URL including http://", "error");
+    $("#streamUrl").value = url;
+    localStorage.setItem("pitdivers.cameraUrl", url);
+    $("#setupCameraStatus").textContent = `Saved ${url}. Connect the stream on Live.`;
+  });
+  $("#setupWheelUrl").value = localStorage.getItem("pitdivers.roverUrl") || $("#roverUrl").value;
+  $("#setupSensorUrl").value = localStorage.getItem("pitdivers.sensorUrl") || "http://192.168.0.99";
+  $("#setupWheelSave").addEventListener("click", () => {
+    const url = $("#setupWheelUrl").value.trim().replace(/\/$/, "");
+    if (!/^https?:\/\/[^\s/]+$/i.test(url)) return toast("Invalid wheel URL", "Enter the ESP base address including http://", "error");
+    $("#roverUrl").value = url;
+    localStorage.setItem("pitdivers.roverUrl", url);
+    $("#setupWheelStatus").textContent = `Saved ${url}. Connect controls on Drive.`;
+  });
+  $("#setupSensorSave").addEventListener("click", () => {
+    const url = $("#setupSensorUrl").value.trim().replace(/\/$/, "");
+    if (!/^https?:\/\/[^\s/]+$/i.test(url)) return toast("Invalid sensor URL", "Enter the ESP base address including http://", "error");
+    $("#setupSensorUrl").value = url;
+    localStorage.setItem("pitdivers.sensorUrl", url);
+    $("#setupSensorStatus").textContent = `Saved ${url}. Reconnect the camera if it is running.`;
+    refreshSensors();
+  });
+  $("#createReportButton").addEventListener("click", createInspectionReport);
+  $("#inspectionConfigureCamera").addEventListener("click", () => setTab("live"));
+  $("#inspectionRecordButton").addEventListener("click", toggleRecording);
+  $("#sendDa3Button").addEventListener("click", sendCaptureToDa3);
+  $("#checkDa3Button").addEventListener("click", checkRemoteDa3);
   const imuPanel = $(".env-grid > .imu-card");
   const imuDialogBody = $("#imuDialogBody");
   if (imuPanel && imuDialogBody) imuDialogBody.append(imuPanel);
+  const storedCameraUrl = localStorage.getItem("pitdivers.cameraUrl");
+  $("#streamUrl").value = !storedCameraUrl || storedCameraUrl === "http://192.168.0.69/jpg"
+    ? "http://192.168.0.119/jpg"
+    : storedCameraUrl;
+  $("#setupCameraUrl").value = $("#streamUrl").value;
+  $("#roverUrl").value = localStorage.getItem("pitdivers.roverUrl") || $("#roverUrl").value;
+  $("#setupWheelUrl").value = $("#roverUrl").value;
+  try {
+    const visibility = JSON.parse(localStorage.getItem("pitdivers.feedVisibility") || "{}");
+    if (typeof visibility.raw === "boolean") $("#showRawFeed").checked = visibility.raw;
+    if (typeof visibility.depth === "boolean") $("#showDepthFeed").checked = visibility.depth;
+    if (typeof visibility.semantic === "boolean") $("#showSemanticFeed").checked = visibility.semantic;
+  } catch { /* Ignore invalid saved display preferences. */ }
+  applyFeedVisibility();
+  $("#lowLightMode").value = localStorage.getItem("pitdivers.lowLightMode") || $("#lowLightMode").value;
+  $("#lowLightStrength").value = localStorage.getItem("pitdivers.lowLightStrength") || $("#lowLightStrength").value;
+  $("#lowLightStrengthValue").textContent = `${$("#lowLightStrength").value}%`;
+  syncAutonomyMission();
+  renderRoverStatus();
+  await window.PitMission?.init?.();
   bindEvents();
   $("#captureName").value = createCaptureName();
   updateClock();
@@ -1438,11 +2544,15 @@ async function initialize() {
   window.addEventListener("resize", () => window.requestAnimationFrame(drawSensorCharts));
   drawSensorCharts();
   await refreshAll();
+  await refreshOllamaModels();
   setInterval(() => refreshLiveStatus(), 1000);
+  setInterval(() => refreshRoverStatus(), 1500);
+  setInterval(() => { refreshGamepadStatus(); refreshAutonomyStatus(); }, 1000);
   window.setTimeout(pollSensors, SENSOR_POLL_INTERVAL_MS);
   setInterval(() => refreshFilmstrip(), 800);
   setInterval(() => refreshJobs(), 1200);
   setInterval(() => { refreshCaptures(); refreshRuns(); refreshModels(); }, 6000);
+  setInterval(refreshExpeditionMap, 2000);
 }
 
 initialize();

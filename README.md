@@ -7,16 +7,26 @@ telemetry, and HC-SR04 ranging in one local dashboard.
 ## Features
 
 - ESP32-S3 MJPEG camera streaming
+- Synchronized 100 Hz MPU6050 and camera capture foundation for visual-inertial odometry
 - Live Depth Anything 3 depth processing on an NVIDIA GPU, with a relative
   depth legend and a min/avg/max + confidence readout
 - Keyframe recording with a live filmstrip of frames as they are captured, and
   photo review
+- Metric teach-and-replay mission map editor with boundaries, obstacles,
+  draggable waypoints, inspection actions, route validation, and rover-plan simulation
 - Offline GLB 3D reconstruction with tunable quality (confidence filter,
   resolution, point budget) and full-screen model viewing
+- Open-vocabulary YOLOE segmentation projected through DA3 depth into persistent
+  3D object candidates, with masks, evidence, a semantic PLY, and an annotated GLB
 - Live DHT11 temperature and humidity environment cards with status pills,
   in-card history graphs, and a pop-out full-size view
 - Live HC-SR04 distance readings with an in-card and pop-out history graph
 - Combined Freenove camera + DHT11 + HC-SR04 firmware for one-device operation
+
+See [`docs/VIO_FOUNDATION.md`](docs/VIO_FOUNDATION.md) for the timestamped
+camera/IMU dataset format and the remaining calibration and estimator work.
+See [`docs/MAP_DATA_MODEL.md`](docs/MAP_DATA_MODEL.md) for the manual-run map
+output expected by the mission editor and the controller safety boundary.
 
 ## Start the dashboard
 
@@ -43,6 +53,29 @@ only `secrets.example.h`.
 
 Captured frames, reconstructed runs, model weights, virtual environments,
 local credentials, and build outputs are excluded from Git.
+
+## Semantic 3D reconstruction
+
+Run semantic projection after a DA3 job has produced both `scene.glb` and
+`exports/npz/results.npz`:
+
+```powershell
+python vision\pitdivers_semanticize.py runs\hallway_large_88 --output runs\img5175_semantic
+```
+
+Edit `vision/classes.yaml` to change the open-vocabulary classes. The result
+contains `semantic_scene.glb`, the dashboard-compatible `scene.glb`,
+`objects.json`, `semantic_points.ply`, per-frame detections and masks, debug
+overlays, and `report.html`. Restart the dashboard and open **3D Models** to
+inspect the object registry beside the scene or open the evidence report.
+Semantic points are surface-anchored to the exported DA3 cloud; unsupported
+floating detections are removed before export. Clicking an object in the viewer
+centres the camera on its bounds and pauses automatic rotation.
+
+The semantic viewer also provides an evidence-backed review queue. Candidates
+can be relabelled, accepted, rejected, or merged. Enter one known object
+dimension to convert the relative DA3 coordinates to metres; calibrated objects
+can then be added directly to a saved Mission Map as inspection waypoints.
 
 ## Third-party licensing
 

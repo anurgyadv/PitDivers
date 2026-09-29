@@ -43,10 +43,13 @@ typedef struct {
 // This camera falls back to RGB565, so every frame is JPEG-encoded in software.
 // A moderate quality keeps the depth input useful while reducing ESP32 CPU time
 // and network payload compared with the original quality-80 conversion.
-#define PITDIVERS_SOFTWARE_JPEG_QUALITY 70
+static volatile int pitdiversSoftwareJpegQuality = 70;
 static const char *_STREAM_CONTENT_TYPE = "multipart/x-mixed-replace;boundary=" PART_BOUNDARY;
 static const char *_STREAM_BOUNDARY = "\r\n--" PART_BOUNDARY "\r\n";
-static const char *_STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\nX-Timestamp: %d.%06d\r\n\r\n";
+static const char *_STREAM_PART = "Content-Type: image/jpeg\r\nContent-Length: %u\r\nX-Timestamp: %lld.%06ld\r\nX-Timestamp-Us: %llu\r\nX-Boot-Id: %u\r\nX-Frame-Sequence: %u\r\n\r\n";
+
+extern uint32_t pitdiversBootId;
+extern volatile uint32_t pitdiversFrameSequence;
 
 httpd_handle_t stream_httpd = NULL;
 httpd_handle_t camera_httpd = NULL;
@@ -124,6 +127,13 @@ static esp_err_t bmp_handler(httpd_req_t *req) {
   char ts[32];
   snprintf(ts, 32, "%lld.%06ld", fb->timestamp.tv_sec, fb->timestamp.tv_usec);
   httpd_resp_set_hdr(req, "X-Timestamp", (const char *)ts);
+  char timestamp_us[24];
+  const uint64_t frameTimestampUs = static_cast<uint64_t>(fb->timestamp.tv_sec) * 1000000ULL + fb->timestamp.tv_usec;
+  snprintf(timestamp_us, sizeof(timestamp_us), "%llu", static_cast<unsigned long long>(frameTimestampUs));
+  httpd_resp_set_hdr(req, "X-Timestamp-Us", timestamp_us);
+  char boot_id[16];
+  snprintf(boot_id, sizeof(boot_id), "%u", pitdiversBootId);
+  httpd_resp_set_hdr(req, "X-Boot-Id", boot_id);
 
   uint8_t *buf = NULL;
   size_t buf_len = 0;
@@ -184,6 +194,13 @@ static esp_err_t capture_handler(httpd_req_t *req) {
   char ts[32];
   snprintf(ts, 32, "%lld.%06ld", fb->timestamp.tv_sec, fb->timestamp.tv_usec);
   httpd_resp_set_hdr(req, "X-Timestamp", (const char *)ts);
+  char timestamp_us[24];
+  const uint64_t frameTimestampUs = static_cast<uint64_t>(fb->timestamp.tv_sec) * 1000000ULL + fb->timestamp.tv_usec;
+  snprintf(timestamp_us, sizeof(timestamp_us), "%llu", static_cast<unsigned long long>(frameTimestampUs));
+  httpd_resp_set_hdr(req, "X-Timestamp-Us", timestamp_us);
+  char boot_id[16];
+  snprintf(boot_id, sizeof(boot_id), "%u", pitdiversBootId);
+  httpd_resp_set_hdr(req, "X-Boot-Id", boot_id);
 
 #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_INFO
   size_t fb_len = 0;
@@ -195,7 +212,7 @@ static esp_err_t capture_handler(httpd_req_t *req) {
     res = httpd_resp_send(req, (const char *)fb->buf, fb->len);
   } else {
     jpg_chunking_t jchunk = {req, 0};
-    res = frame2jpg_cb(fb, PITDIVERS_SOFTWARE_JPEG_QUALITY, jpg_encode_stream, &jchunk) ? ESP_OK : ESP_FAIL;
+    res = frame2jpg_cb(fb, pitdiversSoftwareJpegQuality, jpg_encode_stream, &jchunk) ? ESP_OK : ESP_FAIL;
     httpd_resp_send_chunk(req, NULL, 0);
 #if ARDUHAL_LOG_LEVEL >= ARDUHAL_LOG_LEVEL_INFO
     fb_len = jchunk.len;
@@ -215,7 +232,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
   esp_err_t res = ESP_OK;
   size_t _jpg_buf_len = 0;
   uint8_t *_jpg_buf = NULL;
-  char *part_buf[128];
+  char part_buf[224];
 
   static int64_t last_frame = 0;
   if (!last_frame) {
@@ -244,7 +261,7 @@ static esp_err_t stream_handler(httpd_req_t *req) {
       _timestamp.tv_sec = fb->timestamp.tv_sec;
       _timestamp.tv_usec = fb->timestamp.tv_usec;
       if (fb->format != PIXFORMAT_JPEG) {
-        bool jpeg_converted = frame2jpg(fb, PITDIVERS_SOFTWARE_JPEG_QUALITY, &_jpg_buf, &_jpg_buf_len);
+        bool jpeg_converted = frame2jpg(fb, pitdiversSoftwareJpegQuality, &_jpg_buf, &_jpg_buf_len);
         esp_camera_fb_return(fb);
         fb = NULL;
         if (!jpeg_converted) {
@@ -260,8 +277,20 @@ static esp_err_t stream_handler(httpd_req_t *req) {
       res = httpd_resp_send_chunk(req, _STREAM_BOUNDARY, strlen(_STREAM_BOUNDARY));
     }
     if (res == ESP_OK) {
-      size_t hlen = snprintf((char *)part_buf, 128, _STREAM_PART, _jpg_buf_len, _timestamp.tv_sec, _timestamp.tv_usec);
-      res = httpd_resp_send_chunk(req, (const char *)part_buf, hlen);
+      const uint64_t frameTimestampUs = static_cast<uint64_t>(_timestamp.tv_sec) * 1000000ULL + _timestamp.tv_usec;
+      const uint32_t frameSequence = ++pitdiversFrameSequence;
+      size_t hlen = snprintf(
+        part_buf,
+        sizeof(part_buf),
+        _STREAM_PART,
+        _jpg_buf_len,
+        static_cast<long long>(_timestamp.tv_sec),
+        static_cast<long>(_timestamp.tv_usec),
+        static_cast<unsigned long long>(frameTimestampUs),
+        pitdiversBootId,
+        frameSequence
+      );
+      res = httpd_resp_send_chunk(req, part_buf, hlen);
     }
     if (res == ESP_OK) {
       res = httpd_resp_send_chunk(req, (const char *)_jpg_buf, _jpg_buf_len);
@@ -343,8 +372,14 @@ static esp_err_t cmd_handler(httpd_req_t *req) {
   int res = 0;
 
   if (!strcmp(variable, "framesize")) {
-    if (s->pixformat == PIXFORMAT_JPEG) {
-      res = s->set_framesize(s, (framesize_t)val);
+    // Frame buffers were allocated for the startup resolution, so switching
+    // to a smaller RGB565 frame is safe and greatly reduces software-JPEG cost.
+    res = s->set_framesize(s, (framesize_t)val);
+  } else if (!strcmp(variable, "software_jpeg_quality")) {
+    if (val < 20 || val > 90) {
+      res = -1;
+    } else {
+      pitdiversSoftwareJpegQuality = val;
     }
   } else if (!strcmp(variable, "quality")) {
     res = s->set_quality(s, val);

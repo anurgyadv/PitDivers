@@ -32,18 +32,20 @@ class AutonavTest(unittest.TestCase):
     def test_recovery_waits_for_continuous_health_and_times_out(self):
         gate = RecoveryGate(0.)
         self.assertEqual(gate.update(1.,True),'wait')
-        self.assertEqual(gate.update(1.5,True),'wait')
+        self.assertEqual(gate.update(1.4,True),'wait')
+        self.assertEqual(gate.update(1.5,True),'resume')
         self.assertEqual(gate.update(1.6,False),'wait')
-        self.assertEqual(gate.update(2.,True),'wait')
-        self.assertEqual(gate.update(2.9,True),'wait')
-        self.assertEqual(gate.update(3.,True),'resume')
+        self.assertEqual(gate.update(1.7,True),'wait')
+        self.assertEqual(gate.update(2.1,True),'wait')
+        self.assertEqual(gate.update(2.2,True),'resume')
         self.assertEqual(RecoveryGate(0.).update(31.,False),'timeout')
 
     def test_turn_requires_clear_sweep_and_fresh_data(self):
         fresh = MotionInputs((0, 0, 0), .1, .1, 2., True)
-        self.assertEqual(turn_command(fresh, (0, 1), .5), (-193, -193))
-        self.assertEqual(turn_command(fresh, (0, -1), .5), (193, 193))
-        self.assertEqual(turn_command(fresh, (0, 1), .25), (0, 0))
+        self.assertEqual(turn_command(fresh, (0, 1), .5), (-255, -255))
+        self.assertEqual(turn_command(fresh, (0, -1), .5), (255, 255))
+        self.assertEqual(turn_command(fresh, (0, 1), .449), (0, 0))
+        self.assertEqual(turn_command(fresh, (0, 1), .45), (-255, -255))
         self.assertEqual(turn_command(MotionInputs((0, 0, 0), .7, .1, 2., True),
                                       (0, 1), .5), (0, 0))
         self.assertEqual(turn_command(fresh, (1, 0), .5), (0, 0))

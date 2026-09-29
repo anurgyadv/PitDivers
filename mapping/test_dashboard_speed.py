@@ -16,6 +16,13 @@ from dashboard import make_handler
 class FakeRover(BaseHTTPRequestHandler):
     speed = 160
 
+    def do_POST(self):
+        body=b'{"error":"Local motion faulted; press STOP first"}'
+        self.send_response(409)
+        self.send_header('Content-Length',str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
     def log_message(self, *_):
         pass
 
@@ -68,6 +75,12 @@ class DashboardSpeedTest(unittest.TestCase):
                               headers={'Content-Type': 'application/json'}, method='POST')
             with urlopen(request) as response:
                 self.assertTrue(json.load(response)['ok'])
+            request = Request(base + '/api/drive', data=b'{"direction":"left","duty":255}',
+                              headers={'Content-Type': 'application/json'}, method='POST')
+            with self.assertRaises(HTTPError) as raised:
+                urlopen(request)
+            self.assertEqual(raised.exception.code,409)
+            self.assertIn('press STOP first',json.load(raised.exception)['error'])
         finally:
             for server in (dashboard, rover):
                 server.shutdown()

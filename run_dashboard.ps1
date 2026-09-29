@@ -22,6 +22,7 @@ if ($null -eq $pythonExecutable) {
 }
 
 Set-Location -LiteralPath $projectRoot
+& (Join-Path $projectRoot "mapping\start_demo.ps1")
 & $pythonExecutable (Join-Path $projectRoot "webapp\bootstrap.py")
 
 if ($LASTEXITCODE -ne 0) {

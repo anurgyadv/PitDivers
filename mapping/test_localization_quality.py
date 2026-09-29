@@ -1,7 +1,38 @@
 import math
 import unittest
 import numpy as np
-from localization_quality import MapMatcher, quality_reason
+from localization_quality import MapMatcher, quality_reason, AlignmentHistory
+
+
+class AlignmentHistoryTest(unittest.TestCase):
+    def test_brief_gaps_preserve_progress_but_are_never_ready(self):
+        h=AlignmentHistory()
+        for i in range(15):
+            ready=h.update(i*.3,i,None)
+            self.assertFalse(h.update(i*.3+.1,i,'Waiting for fresh LiDAR',True))
+        self.assertTrue(ready)
+        self.assertEqual(h.count,15)
+        self.assertTrue(h.update(4.5,15,None))
+
+    def test_long_gap_and_bad_match_reset(self):
+        h=AlignmentHistory()
+        for i in range(16):h.update(i*.3,i,None)
+        self.assertFalse(h.update(6.1,15,'Waiting for fresh LiDAR',True))
+        self.assertEqual(h.count,0)
+        h.update(6.2,16,None)
+        h.update(6.3,17,'Live scan does not fit the saved walls')
+        self.assertEqual(h.count,0)
+
+    def test_duplicate_scan_cannot_build_confidence(self):
+        h=AlignmentHistory()
+        for i in range(20):self.assertFalse(h.update(i*.1,1,None))
+
+    def test_short_uncertainty_recovery_needs_five_good_scans(self):
+        h=AlignmentHistory()
+        for i in range(16):h.update(i*.3,i,None)
+        self.assertFalse(h.update(4.6,16,'Searching the saved map: position is still ambiguous'))
+        for i in range(4):self.assertFalse(h.update(4.7+i*.3,17+i,None))
+        self.assertTrue(h.update(5.9,21,None))
 
 
 class LocalizationQualityTest(unittest.TestCase):

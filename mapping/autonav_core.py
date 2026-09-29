@@ -8,9 +8,10 @@ import math
 
 # Faster supervised demo profile. PWM is duty, not calibrated ground speed.
 DRIVE_DUTY = 180
+TURN_DUTY = 255
 ARRIVAL_TOLERANCE_M = .30
 TURN_ENTRY_RAD = .65
-RECOVERY_STABLE_S = 1.
+RECOVERY_STABLE_S = .5
 
 
 @dataclass(frozen=True)
@@ -239,7 +240,7 @@ def turn_command(inputs: MotionInputs, target: tuple[float, float],
                  sweep_clearance_m: float, reverse=False) -> tuple[int, int]:
     """Bounded supervisor calls this only while verifying yaw progress."""
     if (not inputs.wifi_ok or inputs.pose_age_s > .6 or inputs.scan_age_s > .6
-            or not math.isfinite(sweep_clearance_m) or sweep_clearance_m < .30
+            or not math.isfinite(sweep_clearance_m) or sweep_clearance_m < .45
             or not all(map(math.isfinite, inputs.pose))):
         return 0, 0
     x,y,yaw = inputs.pose
@@ -249,4 +250,4 @@ def turn_command(inputs: MotionInputs, target: tuple[float, float],
     error = math.atan2(math.sin(heading-yaw), math.cos(heading-yaw))
     if abs(error) < .20:
         return 0, 0
-    return (-193, -193) if error > 0 else (193, 193)
+    return (-TURN_DUTY, -TURN_DUTY) if error > 0 else (TURN_DUTY, TURN_DUTY)

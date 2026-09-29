@@ -1,0 +1,292 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="2000" height="1580" viewBox="0 0 2000 1580" role="img" aria-labelledby="title desc"><title id="title">PitDivers final four-motor wiring</title><desc id="desc">Final FNK0082 GPIO and wiring plan for camera, SD, three sensors, a 74HC595, two L293D drivers and four motors.</desc><style>text{font-family:Arial,Helvetica,sans-serif}</style>
+<rect x="0" y="0" width="2000" height="1580" rx="0" fill="#f5f8fc" stroke="#f5f8fc" stroke-width="2"/>
+<text x="40" y="52" font-size="30" fill="#172b40" text-anchor="start" font-weight="500">PITDIVERS / FINAL COMPLETE WIRING</text>
+<text x="40" y="84" font-size="19" fill="#526678" text-anchor="start" font-weight="400">FNK0082 • camera + SD • DHT11 + HC-SR04 + MPU6050 • 74HC595 • 2 × L293D • 4 motors</text>
+<rect x="40" y="103" width="1920" height="43" rx="6" fill="#e5edf7" stroke="#e5edf7" stroke-width="2"/>
+<text x="56" y="131" font-size="17" fill="#172b40" text-anchor="start" font-weight="400">Direction uses the 74HC595. GPIO19 controls both left enables; GPIO20 controls both right enables. All GND connections join.</text>
+<rect x="40" y="175" width="440" height="48" rx="7" fill="#203447" stroke="#203447" stroke-width="2"/>
+<text x="56" y="206" font-size="21" fill="#fff" text-anchor="start" font-weight="500">1  ESP32-S3 GPIO allocation</text>
+<rect x="40" y="233" width="440" height="900" rx="11" fill="#202c35" stroke="#101a21" stroke-width="2"/>
+<rect x="145" y="258" width="230" height="105" rx="4" fill="#b9c2c8" stroke="#77818a" stroke-width="2"/>
+<text x="260" y="306" font-size="23" fill="#172b40" text-anchor="middle" font-weight="500">ESP32-S3</text>
+<text x="260" y="338" font-size="17" fill="#172b40" text-anchor="middle" font-weight="400">WROOM N16R8</text>
+<rect x="162" y="386" width="196" height="58" rx="3" fill="#ae803c" stroke="#705523" stroke-width="2"/>
+<rect x="205" y="396" width="110" height="37" rx="3" fill="#17212b" stroke="#17212b" stroke-width="2"/>
+<text x="260" y="470" font-size="15" fill="#fff" text-anchor="middle" font-weight="400">Onboard camera connector</text>
+<text x="63" y="514" font-size="15" fill="#b9cee3" text-anchor="start" font-weight="500">MOTOR CONTROL</text>
+<text x="65" y="548" font-size="15" fill="#fff" text-anchor="start" font-weight="500">GPIO1</text>
+<text x="176" y="548" font-size="15" fill="#8055a6" text-anchor="start" font-weight="400">74HC595 DATA</text>
+<text x="65" y="583" font-size="15" fill="#fff" text-anchor="start" font-weight="500">GPIO2</text>
+<text x="176" y="583" font-size="15" fill="#8055a6" text-anchor="start" font-weight="400">74HC595 CLOCK</text>
+<text x="65" y="618" font-size="15" fill="#fff" text-anchor="start" font-weight="500">GPIO48</text>
+<text x="176" y="618" font-size="15" fill="#8055a6" text-anchor="start" font-weight="400">74HC595 LATCH</text>
+<text x="65" y="653" font-size="15" fill="#fff" text-anchor="start" font-weight="500">GPIO19</text>
+<text x="176" y="653" font-size="15" fill="#2563a5" text-anchor="start" font-weight="400">LEFT PWM × 2</text>
+<text x="65" y="688" font-size="15" fill="#fff" text-anchor="start" font-weight="500">GPIO20</text>
+<text x="176" y="688" font-size="15" fill="#07816d" text-anchor="start" font-weight="400">RIGHT PWM × 2</text>
+<text x="63" y="752" font-size="15" fill="#b9cee3" text-anchor="start" font-weight="500">SENSORS</text>
+<text x="65" y="786" font-size="15" fill="#fff" text-anchor="start" font-weight="500">GPIO21</text>
+<text x="176" y="786" font-size="15" fill="#c56c00" text-anchor="start" font-weight="400">DHT11 DATA</text>
+<text x="65" y="821" font-size="15" fill="#fff" text-anchor="start" font-weight="500">GPIO47</text>
+<text x="176" y="821" font-size="15" fill="#c56c00" text-anchor="start" font-weight="400">SONAR TRIG</text>
+<text x="65" y="856" font-size="15" fill="#fff" text-anchor="start" font-weight="500">GPIO14</text>
+<text x="176" y="856" font-size="15" fill="#c56c00" text-anchor="start" font-weight="400">SONAR ECHO</text>
+<text x="65" y="891" font-size="15" fill="#fff" text-anchor="start" font-weight="500">GPIO41</text>
+<text x="176" y="891" font-size="15" fill="#2563a5" text-anchor="start" font-weight="400">I2C SDA</text>
+<text x="65" y="926" font-size="15" fill="#fff" text-anchor="start" font-weight="500">GPIO42</text>
+<text x="176" y="926" font-size="15" fill="#07816d" text-anchor="start" font-weight="400">I2C SCL</text>
+<text x="63" y="989" font-size="15" fill="#b9cee3" text-anchor="start" font-weight="500">FIXED / RESERVED</text>
+<text x="65" y="1022" font-size="15" fill="#fff" text-anchor="start" font-weight="400">Camera: GPIO4–13, 15–18</text>
+<text x="65" y="1051" font-size="15" fill="#fff" text-anchor="start" font-weight="400">SD: CMD38 • CLK39 • DATA0 40</text>
+<text x="65" y="1080" font-size="15" fill="#fff" text-anchor="start" font-weight="400">Keep GPIO43/44 free for USB-UART</text>
+<text x="65" y="1109" font-size="15" fill="#ffb6b6" text-anchor="start" font-weight="400">Never use GPIO35/36/37: PSRAM</text>
+<rect x="510" y="175" width="700" height="48" rx="7" fill="#203447" stroke="#203447" stroke-width="2"/>
+<text x="526" y="206" font-size="21" fill="#fff" text-anchor="start" font-weight="500">2  74HC595 direction controller / top view</text>
+<rect x="510" y="233" width="700" height="310" rx="11" fill="#fff" stroke="#b9c8d8" stroke-width="2"/>
+<rect x="810" y="258" width="90" height="248" rx="5" fill="#30383e" stroke="#141e25" stroke-width="2"/>
+<path d="M833 258 A22 22 0 0 0 877 258" fill="#fff"/>
+<text x="861" y="390" transform="rotate(-90 861 390)" font-size="20" fill="#fff" text-anchor="middle" font-weight="500">74HC595</text>
+<rect x="800" y="274" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="822" y="282" font-size="13" fill="#fff" text-anchor="start" font-weight="500">1</text>
+<text x="790" y="282" font-size="13" fill="#8055a6" text-anchor="end" font-weight="500">Q1 → front-left IN2</text>
+<rect x="800" y="304" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="822" y="312" font-size="13" fill="#fff" text-anchor="start" font-weight="500">2</text>
+<text x="790" y="312" font-size="13" fill="#8055a6" text-anchor="end" font-weight="500">Q2 → front-right IN3</text>
+<rect x="800" y="334" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="822" y="342" font-size="13" fill="#fff" text-anchor="start" font-weight="500">3</text>
+<text x="790" y="342" font-size="13" fill="#8055a6" text-anchor="end" font-weight="500">Q3 → front-right IN4</text>
+<rect x="800" y="364" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="822" y="372" font-size="13" fill="#fff" text-anchor="start" font-weight="500">4</text>
+<text x="790" y="372" font-size="13" fill="#07816d" text-anchor="end" font-weight="500">Q4 → rear-left IN1</text>
+<rect x="800" y="394" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="822" y="402" font-size="13" fill="#fff" text-anchor="start" font-weight="500">5</text>
+<text x="790" y="402" font-size="13" fill="#07816d" text-anchor="end" font-weight="500">Q5 → rear-left IN2</text>
+<rect x="800" y="424" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="822" y="432" font-size="13" fill="#fff" text-anchor="start" font-weight="500">6</text>
+<text x="790" y="432" font-size="13" fill="#07816d" text-anchor="end" font-weight="500">Q6 → rear-right IN3</text>
+<rect x="800" y="454" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="822" y="462" font-size="13" fill="#fff" text-anchor="start" font-weight="500">7</text>
+<text x="790" y="462" font-size="13" fill="#07816d" text-anchor="end" font-weight="500">Q7 → rear-right IN4</text>
+<rect x="800" y="484" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="822" y="492" font-size="13" fill="#fff" text-anchor="start" font-weight="500">8</text>
+<text x="790" y="492" font-size="13" fill="#263442" text-anchor="end" font-weight="500">GND → common GND</text>
+<rect x="900" y="274" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="888" y="282" font-size="13" fill="#fff" text-anchor="end" font-weight="500">16</text>
+<text x="920" y="282" font-size="13" fill="#d23939" text-anchor="start" font-weight="500">VCC → +3V3</text>
+<rect x="900" y="304" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="888" y="312" font-size="13" fill="#fff" text-anchor="end" font-weight="500">15</text>
+<text x="920" y="312" font-size="13" fill="#8055a6" text-anchor="start" font-weight="500">Q0 → front-left IN1</text>
+<rect x="900" y="334" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="888" y="342" font-size="13" fill="#fff" text-anchor="end" font-weight="500">14</text>
+<text x="920" y="342" font-size="13" fill="#8055a6" text-anchor="start" font-weight="500">SER/DATA ← GPIO1</text>
+<rect x="900" y="364" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="888" y="372" font-size="13" fill="#fff" text-anchor="end" font-weight="500">13</text>
+<text x="920" y="372" font-size="13" fill="#263442" text-anchor="start" font-weight="500">/OE → GND</text>
+<rect x="900" y="394" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="888" y="402" font-size="13" fill="#fff" text-anchor="end" font-weight="500">12</text>
+<text x="920" y="402" font-size="13" fill="#8055a6" text-anchor="start" font-weight="500">LATCH ← GPIO48</text>
+<rect x="900" y="424" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="888" y="432" font-size="13" fill="#fff" text-anchor="end" font-weight="500">11</text>
+<text x="920" y="432" font-size="13" fill="#8055a6" text-anchor="start" font-weight="500">CLOCK ← GPIO2</text>
+<rect x="900" y="454" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="888" y="462" font-size="13" fill="#fff" text-anchor="end" font-weight="500">10</text>
+<text x="920" y="462" font-size="13" fill="#d23939" text-anchor="start" font-weight="500">/MR → +3V3</text>
+<rect x="900" y="484" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="888" y="492" font-size="13" fill="#fff" text-anchor="end" font-weight="500">9</text>
+<text x="920" y="492" font-size="13" fill="#526678" text-anchor="start" font-weight="500">Q7S → unused</text>
+<text x="535" y="526" font-size="14" fill="#526678" text-anchor="start" font-weight="400">Pin 1 is upper left beside the notch; pin 16 is upper right.</text>
+<rect x="510" y="572" width="700" height="48" rx="7" fill="#203447" stroke="#203447" stroke-width="2"/>
+<text x="526" y="603" font-size="21" fill="#fff" text-anchor="start" font-weight="500">3  Two L293D drivers / top view</text>
+<rect x="510" y="630" width="700" height="503" rx="11" fill="#fff" stroke="#b9c8d8" stroke-width="2"/>
+<text x="680" y="683" font-size="17" fill="#172b40" text-anchor="middle" font-weight="500">L293D #1 / FRONT</text>
+<rect x="648" y="704" width="64" height="338" rx="5" fill="#30383e" stroke="#141e25" stroke-width="2"/>
+<path d="M666 704 A14 14 0 0 0 694 704" fill="#fff"/>
+<text x="686" y="892" transform="rotate(-90 686 892)" font-size="19" fill="#fff" text-anchor="middle" font-weight="500">L293D</text>
+<rect x="638" y="723" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="660" y="731" font-size="13" fill="#fff" text-anchor="start" font-weight="500">1</text>
+<text x="630" y="731" font-size="13" fill="#2563a5" text-anchor="end" font-weight="500">GPIO19 · EN1</text>
+<rect x="638" y="763" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="660" y="771" font-size="13" fill="#fff" text-anchor="start" font-weight="500">2</text>
+<text x="630" y="771" font-size="13" fill="#8055a6" text-anchor="end" font-weight="500">Q0 · IN1</text>
+<rect x="638" y="803" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="660" y="811" font-size="13" fill="#fff" text-anchor="start" font-weight="500">3</text>
+<text x="630" y="811" font-size="13" fill="#c56c00" text-anchor="end" font-weight="500">FL+ · OUT1</text>
+<rect x="638" y="843" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="660" y="851" font-size="13" fill="#fff" text-anchor="start" font-weight="500">4</text>
+<text x="630" y="851" font-size="13" fill="#263442" text-anchor="end" font-weight="500">GND</text>
+<rect x="638" y="883" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="660" y="891" font-size="13" fill="#fff" text-anchor="start" font-weight="500">5</text>
+<text x="630" y="891" font-size="13" fill="#263442" text-anchor="end" font-weight="500">GND</text>
+<rect x="638" y="923" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="660" y="931" font-size="13" fill="#fff" text-anchor="start" font-weight="500">6</text>
+<text x="630" y="931" font-size="13" fill="#c56c00" text-anchor="end" font-weight="500">FL− · OUT2</text>
+<rect x="638" y="963" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="660" y="971" font-size="13" fill="#fff" text-anchor="start" font-weight="500">7</text>
+<text x="630" y="971" font-size="13" fill="#8055a6" text-anchor="end" font-weight="500">Q1 · IN2</text>
+<rect x="638" y="1003" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="660" y="1011" font-size="13" fill="#fff" text-anchor="start" font-weight="500">8</text>
+<text x="630" y="1011" font-size="13" fill="#d23939" text-anchor="end" font-weight="500">VMOTOR+ · VCC2</text>
+<rect x="712" y="723" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="700" y="731" font-size="13" fill="#fff" text-anchor="end" font-weight="500">16</text>
+<text x="730" y="731" font-size="13" fill="#d23939" text-anchor="start" font-weight="500">+5V · VCC1</text>
+<rect x="712" y="763" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="700" y="771" font-size="13" fill="#fff" text-anchor="end" font-weight="500">15</text>
+<text x="730" y="771" font-size="13" fill="#8055a6" text-anchor="start" font-weight="500">Q3 · IN4</text>
+<rect x="712" y="803" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="700" y="811" font-size="13" fill="#fff" text-anchor="end" font-weight="500">14</text>
+<text x="730" y="811" font-size="13" fill="#07816d" text-anchor="start" font-weight="500">FR− · OUT4</text>
+<rect x="712" y="843" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="700" y="851" font-size="13" fill="#fff" text-anchor="end" font-weight="500">13</text>
+<text x="730" y="851" font-size="13" fill="#263442" text-anchor="start" font-weight="500">GND</text>
+<rect x="712" y="883" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="700" y="891" font-size="13" fill="#fff" text-anchor="end" font-weight="500">12</text>
+<text x="730" y="891" font-size="13" fill="#263442" text-anchor="start" font-weight="500">GND</text>
+<rect x="712" y="923" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="700" y="931" font-size="13" fill="#fff" text-anchor="end" font-weight="500">11</text>
+<text x="730" y="931" font-size="13" fill="#07816d" text-anchor="start" font-weight="500">FR+ · OUT3</text>
+<rect x="712" y="963" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="700" y="971" font-size="13" fill="#fff" text-anchor="end" font-weight="500">10</text>
+<text x="730" y="971" font-size="13" fill="#8055a6" text-anchor="start" font-weight="500">Q2 · IN3</text>
+<rect x="712" y="1003" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="700" y="1011" font-size="13" fill="#fff" text-anchor="end" font-weight="500">9</text>
+<text x="730" y="1011" font-size="13" fill="#07816d" text-anchor="start" font-weight="500">GPIO20 · EN2</text>
+<text x="1015" y="683" font-size="17" fill="#172b40" text-anchor="middle" font-weight="500">L293D #2 / REAR</text>
+<rect x="983" y="704" width="64" height="338" rx="5" fill="#30383e" stroke="#141e25" stroke-width="2"/>
+<path d="M1001 704 A14 14 0 0 0 1029 704" fill="#fff"/>
+<text x="1021" y="892" transform="rotate(-90 1021 892)" font-size="19" fill="#fff" text-anchor="middle" font-weight="500">L293D</text>
+<rect x="973" y="723" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="995" y="731" font-size="13" fill="#fff" text-anchor="start" font-weight="500">1</text>
+<text x="965" y="731" font-size="13" fill="#2563a5" text-anchor="end" font-weight="500">GPIO19 · EN1</text>
+<rect x="973" y="763" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="995" y="771" font-size="13" fill="#fff" text-anchor="start" font-weight="500">2</text>
+<text x="965" y="771" font-size="13" fill="#8055a6" text-anchor="end" font-weight="500">Q4 · IN1</text>
+<rect x="973" y="803" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="995" y="811" font-size="13" fill="#fff" text-anchor="start" font-weight="500">3</text>
+<text x="965" y="811" font-size="13" fill="#c56c00" text-anchor="end" font-weight="500">RL+ · OUT1</text>
+<rect x="973" y="843" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="995" y="851" font-size="13" fill="#fff" text-anchor="start" font-weight="500">4</text>
+<text x="965" y="851" font-size="13" fill="#263442" text-anchor="end" font-weight="500">GND</text>
+<rect x="973" y="883" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="995" y="891" font-size="13" fill="#fff" text-anchor="start" font-weight="500">5</text>
+<text x="965" y="891" font-size="13" fill="#263442" text-anchor="end" font-weight="500">GND</text>
+<rect x="973" y="923" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="995" y="931" font-size="13" fill="#fff" text-anchor="start" font-weight="500">6</text>
+<text x="965" y="931" font-size="13" fill="#c56c00" text-anchor="end" font-weight="500">RL− · OUT2</text>
+<rect x="973" y="963" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="995" y="971" font-size="13" fill="#fff" text-anchor="start" font-weight="500">7</text>
+<text x="965" y="971" font-size="13" fill="#8055a6" text-anchor="end" font-weight="500">Q5 · IN2</text>
+<rect x="973" y="1003" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="995" y="1011" font-size="13" fill="#fff" text-anchor="start" font-weight="500">8</text>
+<text x="965" y="1011" font-size="13" fill="#d23939" text-anchor="end" font-weight="500">VMOTOR+ · VCC2</text>
+<rect x="1047" y="723" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="1035" y="731" font-size="13" fill="#fff" text-anchor="end" font-weight="500">16</text>
+<text x="1065" y="731" font-size="13" fill="#d23939" text-anchor="start" font-weight="500">+5V · VCC1</text>
+<rect x="1047" y="763" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="1035" y="771" font-size="13" fill="#fff" text-anchor="end" font-weight="500">15</text>
+<text x="1065" y="771" font-size="13" fill="#8055a6" text-anchor="start" font-weight="500">Q7 · IN4</text>
+<rect x="1047" y="803" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="1035" y="811" font-size="13" fill="#fff" text-anchor="end" font-weight="500">14</text>
+<text x="1065" y="811" font-size="13" fill="#07816d" text-anchor="start" font-weight="500">RR− · OUT4</text>
+<rect x="1047" y="843" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="1035" y="851" font-size="13" fill="#fff" text-anchor="end" font-weight="500">13</text>
+<text x="1065" y="851" font-size="13" fill="#263442" text-anchor="start" font-weight="500">GND</text>
+<rect x="1047" y="883" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="1035" y="891" font-size="13" fill="#fff" text-anchor="end" font-weight="500">12</text>
+<text x="1065" y="891" font-size="13" fill="#263442" text-anchor="start" font-weight="500">GND</text>
+<rect x="1047" y="923" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="1035" y="931" font-size="13" fill="#fff" text-anchor="end" font-weight="500">11</text>
+<text x="1065" y="931" font-size="13" fill="#07816d" text-anchor="start" font-weight="500">RR+ · OUT3</text>
+<rect x="1047" y="963" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="1035" y="971" font-size="13" fill="#fff" text-anchor="end" font-weight="500">10</text>
+<text x="1065" y="971" font-size="13" fill="#8055a6" text-anchor="start" font-weight="500">Q6 · IN3</text>
+<rect x="1047" y="1003" width="10" height="8" rx="0" fill="#d5bd72" stroke="#9b8548" stroke-width="2"/>
+<text x="1035" y="1011" font-size="13" fill="#fff" text-anchor="end" font-weight="500">9</text>
+<text x="1065" y="1011" font-size="13" fill="#07816d" text-anchor="start" font-weight="500">GPIO20 · EN2</text>
+<text x="535" y="1081" font-size="14" fill="#526678" text-anchor="start" font-weight="400">Pin 1 is beside the notch at upper left. Count down to pin 8,</text>
+<text x="535" y="1105" font-size="14" fill="#526678" text-anchor="start" font-weight="400">then continue at pin 9 on lower right and count upward to pin 16.</text>
+<rect x="1240" y="175" width="720" height="48" rx="7" fill="#203447" stroke="#203447" stroke-width="2"/>
+<text x="1256" y="206" font-size="21" fill="#fff" text-anchor="start" font-weight="500">4  Sensors + onboard devices</text>
+<rect x="1240" y="233" width="720" height="900" rx="11" fill="#fff" stroke="#b9c8d8" stroke-width="2"/>
+<rect x="1265" y="264" width="125" height="86" rx="7" fill="#187ab7" stroke="#125377" stroke-width="2"/>
+<text x="1415" y="282" font-size="19" fill="#172b40" text-anchor="start" font-weight="500">DHT11</text>
+<text x="1415" y="311" font-size="15" fill="#c56c00" text-anchor="start" font-weight="400">VCC→3V3   DATA→GPIO21   GND→GND</text>
+<text x="1415" y="340" font-size="14" fill="#526678" text-anchor="start" font-weight="400">Bare DHT11: 10 kΩ DATA→3V3 pull-up</text>
+<rect x="1265" y="390" width="190" height="90" rx="5" fill="#246e7b" stroke="#12434d" stroke-width="2"/>
+<circle cx="1312" cy="435" r="31" fill="#b5bcc0"/><circle cx="1312" cy="435" r="23" fill="#3f494f"/><circle cx="1407" cy="435" r="31" fill="#b5bcc0"/><circle cx="1407" cy="435" r="23" fill="#3f494f"/>
+<text x="1480" y="409" font-size="19" fill="#172b40" text-anchor="start" font-weight="500">HC-SR04</text>
+<text x="1480" y="438" font-size="15" fill="#c56c00" text-anchor="start" font-weight="400">VCC→5V   TRIG→GPIO47   GND→GND</text>
+<text x="1480" y="467" font-size="14" fill="#526678" text-anchor="start" font-weight="400">ECHO must pass through divider below</text>
+<text x="1265" y="520" font-size="15" fill="#c56c00" text-anchor="start" font-weight="500">ECHO</text>
+<line x1="1320" y1="515" x2="1380" y2="515" stroke="#c56c00" stroke-width="3" stroke-linecap="round"/>
+<rect x="1380" y="507" width="68" height="16" rx="1" fill="#eddfb0" stroke="#8b7846" stroke-width="2"/>
+<text x="1414" y="496" font-size="13" fill="#172b40" text-anchor="middle" font-weight="400">1 kΩ</text>
+<line x1="1448" y1="515" x2="1530" y2="515" stroke="#c56c00" stroke-width="3" stroke-linecap="round"/>
+<circle cx="1495" cy="515" r="5" fill="#c56c00"/>
+<text x="1545" y="520" font-size="15" fill="#c56c00" text-anchor="start" font-weight="500">GPIO14</text>
+<line x1="1495" y1="520" x2="1495" y2="572" stroke="#263442" stroke-width="3" stroke-linecap="round"/>
+<rect x="1487" y="572" width="16" height="50" rx="1" fill="#eddfb0" stroke="#8b7846" stroke-width="2"/>
+<text x="1517" y="603" font-size="13" fill="#172b40" text-anchor="start" font-weight="400">2 kΩ</text>
+<line x1="1495" y1="622" x2="1495" y2="648" stroke="#263442" stroke-width="3" stroke-linecap="round"/>
+<text x="1495" y="670" font-size="14" fill="#263442" text-anchor="middle" font-weight="500">GND</text>
+<rect x="1265" y="710" width="150" height="105" rx="5" fill="#236f79" stroke="#12434d" stroke-width="2"/>
+<rect x="1315" y="735" width="52" height="38" rx="3" fill="#252b33" stroke="#252b33" stroke-width="2"/>
+<text x="1445" y="733" font-size="19" fill="#172b40" text-anchor="start" font-weight="500">MPU6050</text>
+<text x="1445" y="762" font-size="15" fill="#172b40" text-anchor="start" font-weight="400">VCC→5V*   SDA→GPIO41   SCL→GPIO42</text>
+<text x="1445" y="791" font-size="15" fill="#172b40" text-anchor="start" font-weight="400">GND→GND   AD0→GND (address 0x68)</text>
+<text x="1265" y="842" font-size="14" fill="#526678" text-anchor="start" font-weight="400">*5V only for the Freenove 5V-rated breakout.</text>
+<text x="1265" y="870" font-size="14" fill="#526678" text-anchor="start" font-weight="400">SDA/SCL pull-ups must go to 3.3V.</text>
+<rect x="1265" y="915" width="665" height="175" rx="8" fill="#e5edf7" stroke="#b9c8d8" stroke-width="2"/>
+<text x="1285" y="946" font-size="17" fill="#172b40" text-anchor="start" font-weight="500">ONBOARD CAMERA</text>
+<text x="1285" y="975" font-size="14" fill="#172b40" text-anchor="start" font-weight="400">SIOD4 • SIOC5 • VSYNC6 • HREF7 • PCLK13 • XCLK15</text>
+<text x="1285" y="1002" font-size="14" fill="#172b40" text-anchor="start" font-weight="400">Y2–Y9: 11, 9, 8, 10, 12, 18, 17, 16</text>
+<text x="1285" y="1040" font-size="17" fill="#172b40" text-anchor="start" font-weight="500">ONBOARD SD</text>
+<text x="1285" y="1069" font-size="14" fill="#172b40" text-anchor="start" font-weight="400">CMD38 • CLK39 • DATA0 40 — no external jumpers</text>
+<rect x="40" y="1165" width="1170" height="48" rx="7" fill="#203447" stroke="#203447" stroke-width="2"/>
+<text x="56" y="1196" font-size="21" fill="#fff" text-anchor="start" font-weight="500">5  Four motor outputs</text>
+<rect x="40" y="1223" width="1170" height="195" rx="10" fill="#e1efeb" stroke="#b9c8d8" stroke-width="2"/>
+<text x="80" y="1250" font-size="17" fill="#172b40" text-anchor="start" font-weight="500">Front left</text>
+<rect x="80" y="1260" width="110" height="66" rx="5" fill="#b8b8ac" stroke="#74796f" stroke-width="2"/>
+<rect x="190" y="1269" width="38" height="48" rx="2" fill="#d1a83d" stroke="#8e712c" stroke-width="2"/>
+<line x1="103" y1="1326" x2="103" y2="1348" stroke="#c56c00" stroke-width="4" stroke-linecap="round"/>
+<line x1="162" y1="1326" x2="162" y2="1348" stroke="#c56c00" stroke-width="4" stroke-linecap="round"/>
+<text x="103" y="1368" font-size="13" fill="#c56c00" text-anchor="middle" font-weight="500">FL+</text>
+<text x="162" y="1368" font-size="13" fill="#c56c00" text-anchor="middle" font-weight="500">FL−</text>
+<text x="345" y="1250" font-size="17" fill="#172b40" text-anchor="start" font-weight="500">Front right</text>
+<rect x="345" y="1260" width="110" height="66" rx="5" fill="#b8b8ac" stroke="#74796f" stroke-width="2"/>
+<rect x="455" y="1269" width="38" height="48" rx="2" fill="#d1a83d" stroke="#8e712c" stroke-width="2"/>
+<line x1="368" y1="1326" x2="368" y2="1348" stroke="#07816d" stroke-width="4" stroke-linecap="round"/>
+<line x1="427" y1="1326" x2="427" y2="1348" stroke="#07816d" stroke-width="4" stroke-linecap="round"/>
+<text x="368" y="1368" font-size="13" fill="#07816d" text-anchor="middle" font-weight="500">FR+</text>
+<text x="427" y="1368" font-size="13" fill="#07816d" text-anchor="middle" font-weight="500">FR−</text>
+<text x="610" y="1250" font-size="17" fill="#172b40" text-anchor="start" font-weight="500">Rear left</text>
+<rect x="610" y="1260" width="110" height="66" rx="5" fill="#b8b8ac" stroke="#74796f" stroke-width="2"/>
+<rect x="720" y="1269" width="38" height="48" rx="2" fill="#d1a83d" stroke="#8e712c" stroke-width="2"/>
+<line x1="633" y1="1326" x2="633" y2="1348" stroke="#c56c00" stroke-width="4" stroke-linecap="round"/>
+<line x1="692" y1="1326" x2="692" y2="1348" stroke="#c56c00" stroke-width="4" stroke-linecap="round"/>
+<text x="633" y="1368" font-size="13" fill="#c56c00" text-anchor="middle" font-weight="500">RL+</text>
+<text x="692" y="1368" font-size="13" fill="#c56c00" text-anchor="middle" font-weight="500">RL−</text>
+<text x="875" y="1250" font-size="17" fill="#172b40" text-anchor="start" font-weight="500">Rear right</text>
+<rect x="875" y="1260" width="110" height="66" rx="5" fill="#b8b8ac" stroke="#74796f" stroke-width="2"/>
+<rect x="985" y="1269" width="38" height="48" rx="2" fill="#d1a83d" stroke="#8e712c" stroke-width="2"/>
+<line x1="898" y1="1326" x2="898" y2="1348" stroke="#07816d" stroke-width="4" stroke-linecap="round"/>
+<line x1="957" y1="1326" x2="957" y2="1348" stroke="#07816d" stroke-width="4" stroke-linecap="round"/>
+<text x="898" y="1368" font-size="13" fill="#07816d" text-anchor="middle" font-weight="500">RR+</text>
+<text x="957" y="1368" font-size="13" fill="#07816d" text-anchor="middle" font-weight="500">RR−</text>
+<text x="80" y="1398" font-size="14" fill="#526678" text-anchor="start" font-weight="400">Swap both leads of any motor that spins in the wrong physical direction.</text>
+<rect x="1240" y="1165" width="720" height="48" rx="7" fill="#203447" stroke="#203447" stroke-width="2"/>
+<text x="1256" y="1196" font-size="21" fill="#fff" text-anchor="start" font-weight="500">6  Power + protection</text>
+<rect x="1240" y="1223" width="720" height="304" rx="11" fill="#fff" stroke="#b9c8d8" stroke-width="2"/>
+<text x="1265" y="1255" font-size="16" fill="#d23939" text-anchor="start" font-weight="500">4 × AA ≈ 6 V → switch → both L293D pin 8</text>
+<text x="1265" y="1285" font-size="16" fill="#172b40" text-anchor="start" font-weight="400">USB-UART powers ESP32; ESP32 5V → both pin 16</text>
+<text x="1265" y="1315" font-size="16" fill="#263442" text-anchor="start" font-weight="400">Common GND joins battery negative, ESP32, sensors and all ICs</text>
+<text x="1265" y="1355" font-size="15" fill="#172b40" text-anchor="start" font-weight="400">• 10 kΩ: GPIO19→GND and GPIO20→GND</text>
+<text x="1265" y="1383" font-size="15" fill="#172b40" text-anchor="start" font-weight="400">• Per L293D: 100 nF on pin 16 and pin 8 to GND</text>
+<text x="1265" y="1411" font-size="15" fill="#172b40" text-anchor="start" font-weight="400">• 100 µF across VMOTOR+ / GND near the drivers</text>
+<text x="1265" y="1439" font-size="15" fill="#172b40" text-anchor="start" font-weight="400">• 100 nF directly across each motor</text>
+<text x="1265" y="1474" font-size="14" fill="#526678" text-anchor="start" font-weight="400">Build the final circuit on the general/perfboard ground bus.</text>
+<text x="40" y="1438" font-size="18" fill="#172b40" text-anchor="start" font-weight="500">FINAL GPIO SUMMARY</text>
+<text x="40" y="1470" font-size="16" fill="#172b40" text-anchor="start" font-weight="400">Motor bus: 1 DATA • 2 CLOCK • 48 LATCH • 19 LEFT PWM • 20 RIGHT PWM</text>
+<text x="40" y="1499" font-size="16" fill="#172b40" text-anchor="start" font-weight="400">Sensors: 21 DHT • 47 TRIG • 14 ECHO • 41 SDA • 42 SCL</text>
+<text x="40" y="1528" font-size="15" fill="#c56c00" text-anchor="start" font-weight="400">Do not join driver outputs. GPIO2/48 may flash onboard LEDs while shifting; disable unrelated LED code.</text>
+<text x="40" y="1560" font-size="14" fill="#526678" text-anchor="start" font-weight="400">L293D numbers are physical DIP-16 pins, viewed from above with the notch upward.</text>
+</svg>

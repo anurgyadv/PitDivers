@@ -7,6 +7,14 @@ secrets.h
 runs/
 data/
 models/
+!webapp/models/
+!webapp/models/MODEL_SOURCE.md
+!webapp/models/scunet_color_real_psnr.onnx
+!webapp/models/scunet_color_real_psnr.onnx.data
+/.semantic_deps/
+/webapp/vendor/
+/yoloe-*-seg.pt
+/mobileclip*.ts
 *.log
 
 # Generated scratch files created by the vendored DA3 CLI/gallery.

@@ -20,13 +20,16 @@ def read_status(directory: str | Path) -> dict:
 
 
 def write_command(directory: str | Path, action: str, map_id: str,
-                  round_trip: bool = False) -> dict:
+                  round_trip: bool = False, targets=None) -> dict:
     if action not in ('start', 'cancel'):
         raise ValueError('Invalid mission action')
     path = Path(directory)
     path.mkdir(parents=True, exist_ok=True)
     command = {'action': action, 'map_id': map_id, 'round_trip': round_trip,
                'nonce': uuid4().hex, 'at': time.time()}
+    if targets is not None:
+        from demo_planner import validate_points
+        command['targets']=validate_points(targets)
     temp = path / 'command.tmp'
     temp.write_text(json.dumps(command))
     os.replace(temp, path / 'command.json')
