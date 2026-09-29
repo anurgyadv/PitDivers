@@ -1,0 +1,579 @@
+{
+  "schema_version": "1.0",
+  "source_reconstruction": "hallway_large_88",
+  "vocabulary": [
+    "coffee machine",
+    "table",
+    "chair",
+    "door",
+    "cabinet",
+    "box",
+    "bag",
+    "bottle",
+    "electrical outlet",
+    "light switch",
+    "cable",
+    "person"
+  ],
+  "object_count": 12,
+  "objects": [
+    {
+      "object_id": "bag_0001",
+      "label": "bag",
+      "confidence": 0.46746607718480554,
+      "centroid_world": [
+        -0.008790087886154652,
+        -0.12530174851417542,
+        -0.49909016489982605
+      ],
+      "bbox_min": [
+        -0.06740972399711609,
+        -0.2062024474143982,
+        -0.609323263168335
+      ],
+      "bbox_max": [
+        0.03292025253176689,
+        -0.06863395869731903,
+        -0.46927616000175476
+      ],
+      "point_count": 797,
+      "observations": 6,
+      "source_frames": [
+        5,
+        6,
+        26,
+        41,
+        43,
+        44
+      ],
+      "mask_files": [
+        "masks/frame_0005_00.png",
+        "masks/frame_0006_00.png",
+        "masks/frame_0026_01.png",
+        "masks/frame_0041_01.png",
+        "masks/frame_0043_00.png",
+        "masks/frame_0044_00.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "bag_0001"
+      ]
+    },
+    {
+      "object_id": "bag_0002",
+      "label": "bag",
+      "confidence": 0.22086991704507872,
+      "centroid_world": [
+        0.35251641273498535,
+        0.013653280213475227,
+        0.30332937836647034
+      ],
+      "bbox_min": [
+        0.3217153549194336,
+        -0.11624404042959213,
+        0.12113881856203079
+      ],
+      "bbox_max": [
+        0.43721771240234375,
+        0.1536083221435547,
+        0.4228128492832184
+      ],
+      "point_count": 1158,
+      "observations": 2,
+      "source_frames": [
+        20,
+        22
+      ],
+      "mask_files": [
+        "masks/frame_0020_00.png",
+        "masks/frame_0022_01.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "bag_0002"
+      ]
+    },
+    {
+      "object_id": "box_0001",
+      "label": "box",
+      "confidence": 0.44167017936706543,
+      "centroid_world": [
+        -0.0008443818078376353,
+        -0.10150698572397232,
+        -0.5119881629943848
+      ],
+      "bbox_min": [
+        -0.0464649423956871,
+        -0.15283414721488953,
+        -0.5571723580360413
+      ],
+      "bbox_max": [
+        0.025461675599217415,
+        -0.08148064464330673,
+        -0.4766845703125
+      ],
+      "point_count": 223,
+      "observations": 1,
+      "source_frames": [
+        27
+      ],
+      "mask_files": [
+        "masks/frame_0027_01.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "box_0001"
+      ]
+    },
+    {
+      "object_id": "cabinet_0001",
+      "label": "cabinet",
+      "confidence": 0.333385169506073,
+      "centroid_world": [
+        -0.057604990899562836,
+        0.05796167999505997,
+        0.5093932151794434
+      ],
+      "bbox_min": [
+        -0.06681612879037857,
+        0.028487345203757286,
+        0.47097721695899963
+      ],
+      "bbox_max": [
+        -0.043398596346378326,
+        0.08661726117134094,
+        0.5439237952232361
+      ],
+      "point_count": 103,
+      "observations": 1,
+      "source_frames": [
+        12
+      ],
+      "mask_files": [
+        "masks/frame_0012_00.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "rejected",
+        "note": ""
+      },
+      "geometry_ids": [
+        "cabinet_0001"
+      ]
+    },
+    {
+      "object_id": "cabinet_0002",
+      "label": "cabinet",
+      "confidence": 0.2438010296523442,
+      "centroid_world": [
+        0.40608590841293335,
+        -0.039585016667842865,
+        -0.23846620321273804
+      ],
+      "bbox_min": [
+        0.2943841218948364,
+        -0.22631147503852844,
+        -0.4017074406147003
+      ],
+      "bbox_max": [
+        0.4671098291873932,
+        0.3270092308521271,
+        0.32031580805778503
+      ],
+      "point_count": 2459,
+      "observations": 5,
+      "source_frames": [
+        22,
+        25,
+        35,
+        36,
+        50
+      ],
+      "mask_files": [
+        "masks/frame_0022_00.png",
+        "masks/frame_0025_01.png",
+        "masks/frame_0035_00.png",
+        "masks/frame_0036_01.png",
+        "masks/frame_0050_00.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "cabinet_0002"
+      ]
+    },
+    {
+      "object_id": "door_0001",
+      "label": "door",
+      "confidence": 0.5040163247506068,
+      "centroid_world": [
+        -0.09286388754844666,
+        -0.01667865179479122,
+        0.20635953545570374
+      ],
+      "bbox_min": [
+        -0.13746054470539093,
+        -0.3793905973434448,
+        -0.010708059184253216
+      ],
+      "bbox_max": [
+        0.03152422979474068,
+        0.33561334013938904,
+        0.5301356315612793
+      ],
+      "point_count": 11880,
+      "observations": 19,
+      "source_frames": [
+        6,
+        7,
+        8,
+        9,
+        10,
+        11,
+        14,
+        15,
+        16,
+        57,
+        58,
+        59,
+        60,
+        61,
+        62
+      ],
+      "mask_files": [
+        "masks/frame_0006_02.png",
+        "masks/frame_0007_00.png",
+        "masks/frame_0008_00.png",
+        "masks/frame_0009_00.png",
+        "masks/frame_0009_01.png",
+        "masks/frame_0010_00.png",
+        "masks/frame_0011_00.png",
+        "masks/frame_0011_01.png",
+        "masks/frame_0014_00.png",
+        "masks/frame_0015_00.png",
+        "masks/frame_0016_00.png",
+        "masks/frame_0057_00.png",
+        "masks/frame_0058_00.png",
+        "masks/frame_0059_00.png",
+        "masks/frame_0060_00.png",
+        "masks/frame_0060_01.png",
+        "masks/frame_0060_02.png",
+        "masks/frame_0061_00.png",
+        "masks/frame_0062_02.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "door_0001"
+      ]
+    },
+    {
+      "object_id": "door_0002",
+      "label": "door",
+      "confidence": 0.5477194809673123,
+      "centroid_world": [
+        0.28731420636177063,
+        0.12886300683021545,
+        -0.41957101225852966
+      ],
+      "bbox_min": [
+        -0.10401391983032227,
+        -0.3843255043029785,
+        -0.6823866367340088
+      ],
+      "bbox_max": [
+        0.44543781876564026,
+        0.5162622928619385,
+        0.45134052634239197
+      ],
+      "point_count": 13967,
+      "observations": 29,
+      "source_frames": [
+        17,
+        19,
+        20,
+        24,
+        25,
+        26,
+        30,
+        31,
+        32,
+        33,
+        36,
+        37,
+        38,
+        40,
+        41,
+        46,
+        47,
+        48,
+        49,
+        51,
+        52
+      ],
+      "mask_files": [
+        "masks/frame_0017_00.png",
+        "masks/frame_0019_01.png",
+        "masks/frame_0020_01.png",
+        "masks/frame_0024_00.png",
+        "masks/frame_0025_00.png",
+        "masks/frame_0026_00.png",
+        "masks/frame_0030_00.png",
+        "masks/frame_0031_00.png",
+        "masks/frame_0032_00.png",
+        "masks/frame_0033_00.png",
+        "masks/frame_0033_01.png",
+        "masks/frame_0036_00.png",
+        "masks/frame_0036_02.png",
+        "masks/frame_0037_00.png",
+        "masks/frame_0037_01.png",
+        "masks/frame_0037_02.png",
+        "masks/frame_0037_03.png",
+        "masks/frame_0038_00.png",
+        "masks/frame_0040_00.png",
+        "masks/frame_0041_00.png",
+        "masks/frame_0046_00.png",
+        "masks/frame_0047_00.png",
+        "masks/frame_0048_00.png",
+        "masks/frame_0048_01.png",
+        "masks/frame_0049_00.png",
+        "masks/frame_0049_01.png",
+        "masks/frame_0051_00.png",
+        "masks/frame_0052_01.png",
+        "masks/frame_0052_02.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "door_0002"
+      ]
+    },
+    {
+      "object_id": "door_0004",
+      "label": "door",
+      "confidence": 0.3071887195110321,
+      "centroid_world": [
+        0.04869585856795311,
+        -0.4479776620864868,
+        0.8061048984527588
+      ],
+      "bbox_min": [
+        -0.007153991609811783,
+        -0.45736685395240784,
+        0.7358761429786682
+      ],
+      "bbox_max": [
+        0.09239637106657028,
+        -0.42747142910957336,
+        0.8453646302223206
+      ],
+      "point_count": 91,
+      "observations": 1,
+      "source_frames": [
+        72
+      ],
+      "mask_files": [
+        "masks/frame_0072_00.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "door_0004"
+      ]
+    },
+    {
+      "object_id": "light_switch_0001",
+      "label": "light switch",
+      "confidence": 0.2668073309545982,
+      "centroid_world": [
+        -0.0792810469865799,
+        0.06554220616817474,
+        0.48474350571632385
+      ],
+      "bbox_min": [
+        -0.0839892104268074,
+        -0.12418050318956375,
+        0.47008058428764343
+      ],
+      "bbox_max": [
+        0.0011838338105008006,
+        0.07329687476158142,
+        0.5005565285682678
+      ],
+      "point_count": 20,
+      "observations": 2,
+      "source_frames": [
+        8,
+        11
+      ],
+      "mask_files": [
+        "masks/frame_0008_01.png",
+        "masks/frame_0011_02.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "light_switch_0001"
+      ]
+    },
+    {
+      "object_id": "light_switch_0003",
+      "label": "light switch",
+      "confidence": 0.30108727247511125,
+      "centroid_world": [
+        -0.04196905344724655,
+        0.10826389491558075,
+        0.5130921602249146
+      ],
+      "bbox_min": [
+        -0.05397966876626015,
+        0.04909868910908699,
+        0.4696335792541504
+      ],
+      "bbox_max": [
+        -0.035498544573783875,
+        0.16303475201129913,
+        0.5574050545692444
+      ],
+      "point_count": 358,
+      "observations": 3,
+      "source_frames": [
+        61,
+        62,
+        63
+      ],
+      "mask_files": [
+        "masks/frame_0061_02.png",
+        "masks/frame_0062_01.png",
+        "masks/frame_0063_01.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "light_switch_0003"
+      ]
+    },
+    {
+      "object_id": "person_0001",
+      "label": "person",
+      "confidence": 0.5374065530808226,
+      "centroid_world": [
+        0.3388158082962036,
+        0.018538035452365875,
+        0.2532830834388733
+      ],
+      "bbox_min": [
+        0.29187408089637756,
+        -0.2747926414012909,
+        0.0018812494818121195
+      ],
+      "bbox_max": [
+        0.42647460103034973,
+        0.22365547716617584,
+        0.4373195171356201
+      ],
+      "point_count": 732,
+      "observations": 2,
+      "source_frames": [
+        19,
+        52
+      ],
+      "mask_files": [
+        "masks/frame_0019_00.png",
+        "masks/frame_0052_00.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "person_0001"
+      ]
+    },
+    {
+      "object_id": "table_0001",
+      "label": "table",
+      "confidence": 0.23367612063884735,
+      "centroid_world": [
+        0.037227287888526917,
+        -0.17092353105545044,
+        -0.5275033712387085
+      ],
+      "bbox_min": [
+        -0.024991750717163086,
+        -0.1933882087469101,
+        -0.646575391292572
+      ],
+      "bbox_max": [
+        0.09180836379528046,
+        -0.14297129213809967,
+        -0.447979211807251
+      ],
+      "point_count": 312,
+      "observations": 1,
+      "source_frames": [
+        43
+      ],
+      "mask_files": [
+        "masks/frame_0043_01.png"
+      ],
+      "surface_support": 1.0,
+      "surface_max_distance": 0.02485447645187378,
+      "review": {
+        "status": "candidate",
+        "note": ""
+      },
+      "geometry_ids": [
+        "table_0001"
+      ]
+    }
+  ],
+  "calibration": null,
+  "review_summary": {
+    "accepted": 0,
+    "candidate": 11,
+    "rejected": 1
+  }
+}

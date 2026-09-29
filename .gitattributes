@@ -1,0 +1,2 @@
+runs/**/*.glb filter=lfs diff=lfs merge=lfs -text
+runs/**/*.ply filter=lfs diff=lfs merge=lfs -text
