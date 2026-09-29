@@ -27,7 +27,18 @@ class InspectionReportTests(unittest.TestCase):
         with patch.object(rover_control, "rover_request", return_value={"ok": True}) as send:
             rover_control.corrected_drive_request("http://192.168.0.99", "left", 180)
             send.assert_called_once_with("http://192.168.0.99", "/api/wheels", method="POST",
-                                         params={"a": -180, "b": 180})
+                                         params={"a": -255, "b": -255})
+        expected = {
+            "forward": (-180, 180),
+            "backward": (180, -180),
+            "right": (255, 255),
+        }
+        for command, (a, b) in expected.items():
+            with self.subTest(command=command), patch.object(
+                rover_control, "rover_request", return_value={"ok": True}
+            ) as send:
+                rover_control.corrected_drive_request("http://192.168.0.99", command, 180)
+                self.assertEqual(send.call_args.kwargs["params"], {"a": a, "b": b})
 
     def test_report_binds_saved_map_frames_and_sensor_samples(self) -> None:
         with tempfile.TemporaryDirectory() as temp:

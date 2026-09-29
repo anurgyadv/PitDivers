@@ -69,17 +69,20 @@ def rover_request(
 
 
 def corrected_drive_request(base_url: str, command: str, speed: int) -> dict[str, Any]:
-    """Use the signed wheel channels shared with mapping/drive_commands.py."""
-    signs = {"forward": (1, 1), "backward": (-1, -1),
-             "left": (-1, 1), "right": (1, -1)}
+    """Match the physical arrow profile verified in mapping/demo.js."""
+    # mapping/demo.js maps UI arrows to these legacy directions before
+    # mapping/drive_commands.py turns them into signed wheel duties.
+    wheel_profile = {"forward": (-1, 1), "backward": (1, -1),
+                     "left": (-1, -1), "right": (1, 1)}
     if command == "stop":
         return rover_request(base_url, "/stop")
-    if command not in signs or not 80 <= speed <= 255:
+    if command not in wheel_profile or not 80 <= speed <= 255:
         raise ValueError("Invalid drive command or speed")
-    a, b = signs[command]
+    a, b = wheel_profile[command]
+    duty = 255 if command in {"left", "right"} else speed
     try:
         return rover_request(base_url, "/api/wheels", method="POST",
-                             params={"a": a * speed, "b": b * speed})
+                             params={"a": a * duty, "b": b * duty})
     except RoverControlError as exc:
         if "404" in str(exc) or "not found" in str(exc).lower():
             raise RoverControlError("The rover needs the updated signed-wheel firmware for corrected manual controls") from exc
