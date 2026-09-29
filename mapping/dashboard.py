@@ -475,17 +475,26 @@ def make_handler(service):
     return Handler
 
 
-def main():
+def create_parser():
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument('--host', default='127.0.0.1')
     parser.add_argument('--rover', default='http://192.168.0.99')
     parser.add_argument('--port', type=int, default=8766)
     parser.add_argument('--db', default=str(ROOT/'mapping/room_scans.sqlite3'))
     parser.add_argument('--output', default=str(ROOT/'data/lidar-maps'))
-    args = parser.parse_args()
+    return parser
+
+
+def create_server(service, host, port, server_class=ThreadingHTTPServer):
+    return server_class((host, port), make_handler(service))
+
+
+def main():
+    args = create_parser().parse_args()
     service = MappingService(args.rover, args.db, args.output)
-    server = ThreadingHTTPServer(('127.0.0.1', args.port), make_handler(service))
+    server = create_server(service, args.host, args.port)
     service.start()
-    print(f'Room map: http://127.0.0.1:{args.port}', flush=True)
+    print(f'Room map server: http://{args.host}:{args.port}', flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

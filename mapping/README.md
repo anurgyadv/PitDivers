@@ -2,7 +2,7 @@
 
 ## Saved hallway out-and-back test
 
-The supervised route dashboard is at <http://127.0.0.1:8767/>. Select saved room `c3c666243fd2`. The launcher now uses **AMCL global localization** to find the rover across the saved map without returning it to A. Wait for **Localized at current position**, then press **Go to B**. Scan agreement and pose uncertainty gate movement; repeated live rays update stale local obstacles. A data gap stops the rover, then it replans and continues after verified recovery. **STOP AUTO** cancels active and paused trips. See [the current runbook](../docs/AUTOMATIC_LOCALIZATION.md).
+The supervised route dashboard is at <http://127.0.0.1:8767/>. Its launcher binds the server to the private LAN so the Retroid APK can read `http://<windows-pc-ip>:8767/api/state`; allow Python through Windows Firewall only on private networks. Select saved room `c3c666243fd2`. The launcher now uses **AMCL global localization** to find the rover across the saved map without returning it to A. Wait for **Localized at current position**, then press **Go to B**. Scan agreement and pose uncertainty gate movement; repeated live rays update stale local obstacles. A data gap stops the rover, then it replans and continues after verified recovery. **STOP AUTO** cancels active and paused trips. See [the current runbook](../docs/AUTOMATIC_LOCALIZATION.md).
 
 **29 September live result:** the one-way trip reached B, ROS reported approximately 12 cm remaining error and 97% scan agreement, the ESP confirmed `motion: stopped`, and the operator confirmed the physical destination. The return leg and bounded in-place turning have not yet been proven on the floor.
 
@@ -21,10 +21,14 @@ The dashboard enables travel only after localization passes scan agreement and u
 From the PitDivers folder in PowerShell:
 
 ```powershell
-uv run --with numpy --with scipy --no-project python mapping/dashboard.py --rover http://192.168.0.99
+uv run --with numpy --with scipy --no-project python mapping/dashboard.py --host 0.0.0.0 --rover http://192.168.0.99
 ```
 
 Open **http://127.0.0.1:8766/** on this PC. Keep the terminal running. The page shows a room occupancy map, estimated rover path, current LiDAR scan, temperature and humidity layers, tracking quality, and microSD recording state. Use **Start LiDAR** if the sensor is stopped. After a long pause or rover restart, use **New room** to establish a new origin; previous room snapshots stay saved.
+
+`--host 0.0.0.0` exposes the dashboard on the trusted LAN for the Retroid. The
+APK reads only `/api/state`; the dashboard's POST routes keep their existing
+same-origin check. Without `--host`, the default remains loopback-only.
 
 For the current chassis mounting, the dashboard D-pad corrects the rover's rotated response in software: **up sends the ESP `left` command, down sends `right`, left sends `backward`, and right sends `forward`**. This correction applies only to the room dashboard; the ESP's own web page remains unchanged until a later firmware flash. The command loop preserves a newly pressed direction while an earlier request is still finishing. Releasing a button requests `stop` immediately, and the ESP's 600 ms command lease remains the final stop safeguard. While driving, this dashboard pauses its own microSD backlog polling for one second after each command; the durable scan records are collected afterward.
 
