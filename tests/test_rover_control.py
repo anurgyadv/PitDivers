@@ -4,9 +4,21 @@ import unittest
 from unittest.mock import MagicMock, patch
 
 from webapp.rover_control import normalize_rover_url, rover_request
+from webapp.app import RoverRequest, rover_connect
 
 
 class RoverControlTests(unittest.TestCase):
+    @patch("webapp.app.rover_request")
+    @patch("webapp.app.gamepad_bridge.stop")
+    @patch("webapp.app.autonomy.stop")
+    def test_connect_skips_legacy_mode_for_signed_wheel_esp(self, _autonomy: MagicMock,
+                                                           _gamepad: MagicMock, send: MagicMock) -> None:
+        send.side_effect = [{"signed_wheels": True}, {"motion": "Stopped", "speed": 160}]
+        result = rover_connect(RoverRequest(base_url="http://192.168.0.99"))
+        self.assertEqual(result["motion"], "Stopped")
+        self.assertEqual([call.args[1] for call in send.call_args_list],
+                         ["/api/capabilities", "/api/status"])
+
     def test_normalizes_controller_to_origin(self) -> None:
         self.assertEqual(
             normalize_rover_url(" http://192.168.0.70/some/path "),

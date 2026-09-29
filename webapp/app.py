@@ -199,15 +199,20 @@ def rover_status(base_url: str = Query(min_length=1)) -> dict:
 
 @app.post("/api/rover/connect")
 def rover_connect(request: RoverRequest) -> dict:
-    """Put the dedicated motion ESP in human mode and return its status."""
+    """Connect either signed-wheel firmware or the legacy motion ESP."""
     try:
         autonomy.stop()
         gamepad_bridge.stop()
         try:
-            rover_request(request.base_url, "/mode", method="POST", params={"value": "human"})
+            capabilities = rover_request(request.base_url, "/api/capabilities")
         except RoverControlError:
-            # The combined wheel/LiDAR/sensor firmware has no mode endpoint.
-            pass
+            capabilities = {}
+        if not capabilities.get("signed_wheels"):
+            try:
+                rover_request(request.base_url, "/mode", method="POST", params={"value": "human"})
+            except RoverControlError:
+                # Some combined firmware lacks both optional endpoints.
+                pass
         payload = rover_request(request.base_url, "/api/status")
         payload["base_url"] = normalize_rover_url(request.base_url)
         return payload
